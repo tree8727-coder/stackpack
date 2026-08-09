@@ -316,6 +316,24 @@ tools:
     difficulty: 고급
     saves: [비용(회계프로그램), 시간]
 
+  httpie:
+    name: HTTPie
+    tier: hands
+    icon: "📡"
+    repo: httpie/cli
+    tagline: 사람이 읽을 수 있는 API 호출기
+    what: >-
+      curl과 같은 일을 하지만 명령어가 짧고 응답 JSON에 색을 입혀 보여줍니다.
+      API 하나 찔러보는 데 문법을 검색할 필요가 없습니다.
+    why: >-
+      Firecrawl이 웹 화면을 긁는다면 HTTPie는 API를 직접 칩니다.
+      트렌드 API·검색 API 응답을 jq로 발라 AI에게 던지는 파이프라인의 입구입니다.
+    install: |
+      winget install HTTPie.HTTPie
+    run: http GET https://api.github.com/repos/ollama/ollama
+    difficulty: 초급
+    saves: [curl 문법 검색, 응답 읽는 시간]
+
   # ── 💻 Command Center ──────────────────────────────────────
   uv:
     name: uv
@@ -490,6 +508,59 @@ tools:
     difficulty: 초급
     saves: [사양 확인 시간]
 
+  fd:
+    name: fd
+    tier: command
+    icon: "📁"
+    repo: sharkdp/fd
+    tagline: 직관적인 파일 찾기 명령어
+    what: >-
+      `find`의 복잡한 문법 없이 `fd 파일이름`만 치면 하위 폴더를 전부 뒤져 찾아줍니다.
+      ripgrep이 파일 '내용'을 찾는다면 fd는 파일 '이름'을 찾습니다.
+    why: >-
+      "그 사진 어디 뒀더라"를 0.1초에 끝냅니다. `-x` 옵션으로 찾은 파일 전부에
+      명령을 걸 수 있어 ImageMagick 일괄 변환의 짝입니다.
+    install: |
+      winget install sharkdp.fd
+    run: fd -e png . ./images/
+    difficulty: 초급
+    saves: [파일 찾는 시간, find 문법 검색]
+
+  eza:
+    name: eza
+    tier: command
+    icon: "📋"
+    repo: eza-community/eza
+    tagline: 색과 아이콘이 붙는 ls 대체재
+    what: >-
+      파일 목록을 볼 때 종류별 색상, 파일 크기, Git 상태, 트리 구조를 함께 보여줍니다.
+      exa의 유지보수를 이어받은 후속 프로젝트입니다.
+    why: >-
+      폴더 구조를 파악하려고 탐색기를 여는 일이 없어집니다. `eza --tree`면 끝입니다.
+    install: |
+      winget install eza-community.eza
+    run: eza --tree --level=2 --icons
+    difficulty: 초급
+    saves: [탐색기 왕복]
+
+  gh:
+    name: GitHub CLI
+    tier: command
+    icon: "🐙"
+    repo: cli/cli
+    tagline: 터미널에서 깃허브 전부 조작
+    what: >-
+      리포 생성, 이슈·PR 열기, 리뷰, 릴리스, Actions 확인까지 브라우저 없이 명령어로 처리합니다.
+      깃허브 공식 도구입니다.
+    why: >-
+      이 저장소도 `gh repo create`로 만들어 Pages까지 켰습니다.
+      AI 에이전트에게 깃허브 작업을 시킬 때 사실상 필수 관문입니다.
+    install: |
+      winget install GitHub.cli
+    run: gh auth login
+    difficulty: 초급
+    saves: [브라우저 왕복, 반복 클릭]
+
   zoxide:
     name: zoxide
     tier: command
@@ -604,13 +675,28 @@ combos:
   hacker-desk:
     name: "💥 해커 사령실 세팅"
     role: "👑 CEO (공통)"
-    tools: [starship, zoxide, fzf, ripgrep, bat, lazygit, fastfetch]
+    tools: [starship, zoxide, eza, fd, fzf, ripgrep, bat, lazygit, gh, fastfetch]
     desc: >-
       까만 터미널을 Git 상태·언어 버전이 색으로 보이는 사령실로 바꾸고,
       키보드만으로 수천 개 파일을 날아다니는 환경을 만듭니다. 다른 모든 콤보의 바닥입니다.
+      이름은 fd, 내용은 ripgrep, 목록은 eza, 깃허브는 gh가 맡습니다.
     run: rg --line-number '검색어' | fzf --preview 'bat --color=always {1} --highlight-line {2}'
     prompt: "(설치만 하면 됩니다. 터미널을 여는 순간 체감됩니다.)"
     saves: [생산성, 심리적 동기부여]
+    difficulty: 초급
+
+  bulk-image:
+    name: "💥 대량 이미지 원클릭 변환"
+    role: "📢 마케터"
+    tools: [fd, imagemagick]
+    desc: >-
+      폴더에 흩어진 이미지 수백 장을 이름으로 전부 찾아내 리사이즈·포맷 변환·워터마크를
+      한 번에 겁니다. 상세페이지 이미지 정리, 인스타 규격 맞추기가 명령 한 줄이 됩니다.
+    run: fd -e png -e jpg . ./images/ -x magick {} -resize 1080x1080^ -gravity center -extent 1080x1080 ./out/{/.}.jpg
+    prompt: >-
+      ./images 안의 모든 이미지를 인스타 정사각형(1080x1080) 규격으로 잘라 ./out에 저장하는
+      fd + ImageMagick 명령을 써줘. 원본은 건드리지 말고.
+    saves: [시간, 비용(포토샵 구독료)]
     difficulty: 초급
 
   ledger-bot:
