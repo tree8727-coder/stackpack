@@ -20,12 +20,26 @@ stack.yaml  ←  유일한 진실. 손으로만 편집.
 ## 쓰는 법
 
 ```powershell
-uv run build.py html                          # 허브 페이지 열기
-uv run build.py install content-factory       # 뭐가 깔릴지 먼저 확인
-uv run build.py install content-factory --yes # 실제 설치
+uv run build.py status                        # 내 PC에 뭐가 이미 깔려 있나
+uv run build.py status content-factory        # 이 콤보만
+uv run build.py install content-factory --skip-installed        # 없는 것만 미리보기
+uv run build.py install content-factory --skip-installed --yes  # 실제 설치
+uv run build.py html                          # 허브 페이지 다시 만들기
 uv run build.py skill --install               # Claude Code가 대신 깔게 하기
 uv run examples/cardnews.py                   # 콤보 실행 예제
 ```
+
+`status`를 먼저 돌리세요. 이미 깔린 걸 다시 까는 게 제일 흔한 낭비입니다.
+
+```
+OK ripgrep (rg)     ripgrep 15.2.0 (rev e89fff89ac)
+-- n8n              없음
+?  Dify             확인 불가
+
+설치됨 16 / 없음 9 / 확인불가 6
+```
+
+"확인 불가"는 CLI가 없는 도구입니다(웹 서비스·도커·파이썬 라이브러리). 없다는 뜻이 아닙니다.
 
 `install`은 **미리보기가 기본값**입니다. `--yes`를 붙여야 실행됩니다.
 실행은 PowerShell을 통해 이뤄집니다 (`Add-Content $PROFILE` 같은 명령 때문).
@@ -43,9 +57,13 @@ uv run examples/cardnews.py                   # 콤보 실행 예제
 uv run build.py selftest
 ```
 
-- 콤보/가이드가 참조하는 도구·콤보가 실재하는지
+- 콤보/가이드가 참조하는 도구·콤보·커넥터·예제 파일이 실재하는지
 - 명령 중복 제거가 순서를 지키는지
 - **미리보기 모드가 어떤 경우에도 명령을 실행하지 않는지**
+- **`status`의 확인 명령에 설치 동사(`install`/`clone`/`docker run`)가 섞이지 않았는지**
+- 커넥터 노드 그래프에 끊긴 노드가 없는지, `cardnews.py` 출력 필드와 맞는지
+
+`uv run examples/cardnews.py --demo`는 페이로드가 커넥터가 읽는 모양인지까지 검사합니다.
 
 ## 파일
 
@@ -54,6 +72,8 @@ uv run build.py selftest
 | `stack.yaml` | 도구·콤보·가이드 데이터. 여기만 고치면 됩니다 |
 | `build.py` | 렌더러 + 설치기 + 스킬 생성기 + 자체 검사 |
 | `examples/cardnews.py` | content-factory 콤보의 실행 예제 |
+| `connectors/` | 예제 출력을 실제 서비스로 흘려보내는 n8n 워크플로 |
+| `ci/pages.yml` | 보관 중인 CI 워크플로 (아래 배포 항목 참고) |
 | `index.html` | 생성물 — 직접 고치지 마세요 |
 | `stars.json` | 생성물 — `build.py stars`가 씁니다 |
 | `skill/SKILL.md` | 생성물 — `build.py skill`이 씁니다 |

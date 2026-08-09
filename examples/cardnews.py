@@ -85,13 +85,29 @@ def main(argv):
 
 
 def demo():
+    import shutil
+    import tempfile
+
     assert hex_rgb("#FF00FF") == (255, 0, 255)
     assert hex_rgb("39FF14") == (57, 255, 20)
-    tmp = render(SAMPLE["slides"][0], Path("out_test.png"))
-    with Image.open(tmp) as img:  # with 없이 열면 핸들이 남아 unlink가 WinError 32
-        assert img.size == (SIZE, SIZE), img.size
-    Path(tmp).unlink()
-    print("cardnews demo 통과")
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        img_path = render(SAMPLE["slides"][0], tmp / "s.png")
+        with Image.open(img_path) as img:  # with 없이 열면 핸들이 남아 unlink가 WinError 32
+            assert img.size == (SIZE, SIZE), img.size
+
+        # 입력 JSON 경로 + 페이로드가 connectors/n8n-cardnews.json 이 읽는 모양인지
+        src = tmp / "in.json"
+        src.write_text(json.dumps(SAMPLE, ensure_ascii=False), encoding="utf-8")
+        main([str(src), str(tmp / "payload")])
+        payload = json.loads((tmp / "payload/n8n_payload.json").read_text(encoding="utf-8"))
+        assert set(payload) >= {"caption", "media_files"}, payload.keys()
+        assert len(payload["media_files"]) == len(SAMPLE["slides"])
+        assert payload["caption"].strip(), "caption이 비면 커넥터가 예외를 던집니다"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("cardnews demo 통과 (커넥터 페이로드 계약 포함)")
 
 
 if __name__ == "__main__":

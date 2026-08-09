@@ -1,0 +1,83 @@
+{
+  "name": "stackpack — 카드뉴스 수신 → 승인 → 발행",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cardnews",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-in",
+      "name": "카드뉴스 수신",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-320, 0],
+      "webhookId": "stackpack-cardnews"
+    },
+    {
+      "parameters": {
+        "jsCode": "// examples/cardnews.py 가 만든 n8n_payload.json 을 검증합니다.\n// 형식: {action, caption, media_files:[경로...]}\nconst p = $input.first().json.body ?? $input.first().json;\nif (!p.caption) throw new Error('caption 없음 — cardnews.py 출력이 맞는지 확인하세요');\nif (!Array.isArray(p.media_files) || p.media_files.length === 0) {\n  throw new Error('media_files 비어 있음');\n}\nreturn [{ json: {\n  caption: p.caption,\n  files: p.media_files,\n  count: p.media_files.length,\n  action: p.action ?? 'AUTO_UPLOAD_INSTAGRAM',\n} }];"
+      },
+      "id": "validate",
+      "name": "페이로드 검증",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-100, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "id": "has-files",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "gate",
+      "name": "슬라이드 있음?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [120, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ⚠️ 발행 단계는 의도적으로 비워 뒀습니다.\n// 인스타그램/스레드 발행은 계정 연동과 토큰이 필요하고, 사람마다 다릅니다.\n// 이 노드를 지우고 아래 중 하나로 교체하세요:\n//   - Instagram Graph API  (HTTP Request 노드)\n//   - Buffer / Later 등 예약 발행 서비스\n//   - Telegram/Slack 노드로 나에게 먼저 보내 눈으로 확인 후 수동 업로드\n//\n// 지금은 무엇이 발행될지 로그만 남깁니다. 안전한 기본값입니다.\nconst j = $input.first().json;\nreturn [{ json: {\n  status: 'DRY_RUN',\n  message: `${j.count}장 준비됨. 발행 노드를 연결하세요.`,\n  caption: j.caption,\n  files: j.files,\n} }];"
+      },
+      "id": "publish",
+      "name": "발행 (미연결 — 교체하세요)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [340, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'SKIPPED', reason: '슬라이드가 없습니다' } }];"
+      },
+      "id": "skip",
+      "name": "건너뜀",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [340, 100]
+    }
+  ],
+  "connections": {
+    "카드뉴스 수신": { "main": [[{ "node": "페이로드 검증", "type": "main", "index": 0 }]] },
+    "페이로드 검증": { "main": [[{ "node": "슬라이드 있음?", "type": "main", "index": 0 }]] },
+    "슬라이드 있음?": {
+      "main": [
+        [{ "node": "발행 (미연결 — 교체하세요)", "type": "main", "index": 0 }],
+        [{ "node": "건너뜀", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

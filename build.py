@@ -71,19 +71,82 @@ def commands_for(data, keys):
     return out
 
 
+# ─── 설치 여부 확인 ──────────────────────────────────────────────────────────
+
+def check_cmd(data, key):
+    """None이면 확인 불가. 기본값은 '<키> --version'."""
+    c = data.get("checks", {}).get(key, f"{key} --version")
+    return c or None
+
+
+def _probe(cmd):
+    try:
+        r = subprocess.run(cmd, shell=True, capture_output=True, timeout=20, text=True, errors="replace")
+        first = (r.stdout or r.stderr).strip().splitlines()
+        return r.returncode == 0, (first[0][:48] if first else "")
+    except Exception:
+        return False, ""
+
+
+def do_status(data, targets=None, quiet=False):
+    keys = []
+    for t in targets or ["all"]:
+        for k in resolve(data, t):
+            if k not in keys:
+                keys.append(k)
+
+    probes = {k: check_cmd(data, k) for k in keys}
+    checkable = [k for k in keys if probes[k]]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = dict(zip(checkable, pool.map(lambda k: _probe(probes[k]), checkable)))
+
+    installed, missing, unknown = [], [], []
+    for k in keys:
+        if not probes[k]:
+            unknown.append(k)
+        elif results[k][0]:
+            installed.append(k)
+        else:
+            missing.append(k)
+
+    if not quiet:
+        for k in keys:
+            name = data["tools"][k]["name"]
+            if k in unknown:
+                print(f"  ?  {name:<16} 확인 불가")
+            elif k in installed:
+                print(f"  OK {name:<16} {results[k][1]}")
+            else:
+                print(f"  -- {name:<16} 없음")
+        print(f"\n설치됨 {len(installed)} / 없음 {len(missing)} / 확인불가 {len(unknown)}")
+        if missing:
+            print(f"\n설치하려면: uv run build.py install {' '.join(missing)} --yes")
+    return {"installed": installed, "missing": missing, "unknown": unknown}
+
+
 def _powershell(cmd):
     return subprocess.run(
         ["powershell", "-NoProfile", "-Command", cmd], check=False
     ).returncode
 
 
-def do_install(data, targets, execute=False, runner=_powershell):
+def do_install(data, targets, execute=False, runner=_powershell, skip_installed=False):
     """execute=False면 runner를 절대 호출하지 않습니다. selftest가 이걸 검증합니다."""
     tool_keys = []
     for t in targets:
         for k in resolve(data, t):
             if k not in tool_keys:
                 tool_keys.append(k)
+
+    if skip_installed:
+        st = do_status(data, tool_keys, quiet=True)
+        already = [k for k in tool_keys if k in st["installed"]]
+        if already:
+            print(f"이미 설치됨 {len(already)}개 건너뜀: {', '.join(data['tools'][k]['name'] for k in already)}")
+        tool_keys = [k for k in tool_keys if k not in already]
+        if not tool_keys:
+            print("전부 설치되어 있습니다.")
+            return 0
 
     cmds = commands_for(data, tool_keys)
     label = ", ".join(data["tools"][k]["name"] for k in tool_keys)
@@ -238,6 +301,19 @@ onkeydown=e=>{if(e.key==='Escape')hide();};
 """
 
 
+REPO_BLOB = "https://github.com/tree8727-coder/stackpack/blob/main"
+
+
+def connector_note(combo):
+    """stack.yaml의 connector 필드만 신뢰합니다. 파일명 추측은 하지 않습니다."""
+    name = combo.get("connector")
+    if not name:
+        return ""
+    return (f'<p class="hint">n8n 커넥터: '
+            f'<a href="{REPO_BLOB}/connectors/{html.escape(name)}">{html.escape(name)}</a>'
+            f' — n8n에서 Import from File</p>')
+
+
 def do_html(data):
     stars = load_stars()
     tools, combos, tiers = data["tools"], data["combos"], data["tiers"]
@@ -259,7 +335,8 @@ def do_html(data):
       <pre>{e(install)}</pre>
       <div class="lb">실행</div>
       <pre>{e(c.get('run',''))}</pre>
-      <p class="hint">또는 한 줄로: <code>uv run build.py install {e(key)} --yes</code></p>
+      <p class="hint">먼저 확인: <code>uv run build.py status {e(key)}</code></p>
+      <p class="hint">없는 것만 설치: <code>uv run build.py install {e(key)} --skip-installed --yes</code></p>{connector_note(c)}
       <p class="hint">AI 프롬프트: {e(c.get('prompt',''))}</p>
       <div class="saves" style="margin-top:12px">{saves}</div>
     </div>"""
@@ -353,15 +430,43 @@ description: 1인 창업 AI 자동화 스택 카탈로그. 어떤 오픈소스 �
 
 도구 {len(tools)}개, 검증된 조합 {len(combos)}개. 원본 데이터는 `{STACK}`.
 
-## 설치 실행 방법
+## 순서 — 이 순서를 지키세요
+
+### 1) 먼저 무엇이 이미 깔려 있는지 확인
 
 ```
-uv run {ROOT / 'build.py'} install <키>        # 미리보기 (실행 안 함)
-uv run {ROOT / 'build.py'} install <키> --yes  # 실제 설치
+uv run {ROOT / 'build.py'} status <키>
 ```
+
+**추측하지 마세요.** 사용자 PC에 이미 절반쯤 깔려 있는 경우가 흔합니다.
+설치를 제안하기 전에 반드시 이걸 먼저 돌리고, 결과를 근거로 말하세요.
+("Starship·fzf·ripgrep은 이미 있으시고, n8n만 없습니다")
+
+### 2) 없는 것만 미리보기
+
+```
+uv run {ROOT / 'build.py'} install <키> --skip-installed
+```
+
+무엇이 실행될지 사용자에게 보여줍니다. 아무것도 설치하지 않습니다.
+
+### 3) 확인받고 실행
+
+```
+uv run {ROOT / 'build.py'} install <키> --skip-installed --yes
+```
+
+**`--yes`는 사용자가 명시적으로 동의한 뒤에만 붙입니다.**
+
+### 4) 설치 후 검증
+
+```
+uv run {ROOT / 'build.py'} status <키>
+```
+
+"설치했습니다"라고 말하기 전에 이걸로 확인하세요. winget은 실패해도 조용할 때가 있습니다.
 
 키는 아래 표의 콤보 키 또는 도구 키. `all`도 됩니다.
-**항상 미리보기를 먼저 보여주고 사용자 확인을 받은 뒤 `--yes`를 붙이세요.**
 콤보 설치 명령은 멤버 도구에서 자동으로 합쳐지므로 직접 조합하지 마세요.
 
 ## 콤보 — 목적에서 시작하기
@@ -379,9 +484,20 @@ uv run {ROOT / 'build.py'} install <키> --yes  # 실제 설치
 ## 규칙
 
 - 사용자가 목적("영상 만들고 싶어")을 말하면 도구가 아니라 **콤보**를 먼저 제안하세요.
-- 도구를 추가·수정할 일이 생기면 `stack.yaml`만 고치고 `build.py html`을 다시 돌리세요.
+- 설치 상태를 말할 때는 `status` 출력을 근거로만 말하세요. 기억이나 추측 금지.
+- 도구를 추가·수정할 일이 생기면 `stack.yaml`만 고치고 `build.py html`과
+  `build.py skill --install`을 다시 돌리세요.
   HTML이나 이 스킬 파일을 직접 고치면 다음 빌드에 덮어써집니다.
 - 별점이 오래됐으면 `uv run {ROOT / 'build.py'} stars`.
+
+## 주의
+
+- `docker`가 필요한 도구(Dify, Stirling-PDF)는 Docker Desktop이 **실행 중**이어야 합니다.
+  설치만으로는 안 됩니다.
+- `Add-Content $PROFILE` 이 들어간 도구(Starship, zoxide)는 설치 후
+  **터미널을 새로 열어야** 적용됩니다.
+- `status`가 "확인 불가"로 나오는 것들은 CLI가 없는 도구입니다(웹 서비스·도커·파이썬 라이브러리).
+  없다는 뜻이 아닙니다.
 """
     out = ROOT / "skill" / "SKILL.md"
     out.parent.mkdir(exist_ok=True)
@@ -410,6 +526,11 @@ def do_selftest(data):
     for g in data["guide"]:
         for c in g.get("combos", []):
             assert c in combos, f"가이드 {g['step']}단계 → 없는 콤보 '{c}'"
+    for ck, c in combos.items():  # connector/example이 실재 파일을 가리키는지
+        if n := c.get("connector"):
+            assert (ROOT / "connectors" / n).exists(), f"콤보 {ck} → 없는 커넥터 '{n}'"
+        if x := c.get("example"):
+            assert (ROOT / x).exists(), f"콤보 {ck} → 없는 예제 '{x}'"
     for k, t in tools.items():
         assert t.get("tier") in data["tiers"], f"도구 {k} → 없는 티어 '{t.get('tier')}'"
 
@@ -429,7 +550,44 @@ def do_selftest(data):
     do_install(data, ["fzf"], execute=True, runner=lambda c: called.append(c) or 0)
     assert called == ["winget install junegunn.fzf"], called
 
-    print(f"\n통과: 도구 {len(tools)}, 콤보 {len(combos)}, 가이드 {len(data['guide'])}단계")
+    # 5. checks가 실재하는 도구만 가리키는지 + 확인 명령 해석
+    for k in data.get("checks", {}):
+        assert k in tools, f"checks → 없는 도구 '{k}'"
+    assert check_cmd(data, "ripgrep") == "rg --version"      # 명시 override
+    assert check_cmd(data, "fzf") == "fzf --version"         # 기본값 파생
+    assert check_cmd(data, "dify") is None                   # 확인 불가
+
+    # 6. status는 절대 설치하지 않는다 — 확인 명령에 설치 동사가 섞이면 실패
+    for k in tools:
+        c = check_cmd(data, k) or ""
+        assert not any(v in c for v in ("install", "clone", "docker run", "Add-Content")), f"{k}: {c}"
+
+    # 7. 커넥터 — 노드 그래프가 끊겨 있지 않고, cardnews 출력과 필드가 맞는지
+    for cf in sorted((ROOT / "connectors").glob("*.json")):
+        wf = json.loads(cf.read_text(encoding="utf-8"))
+        names = {n["name"] for n in wf["nodes"]}
+        assert len(names) == len(wf["nodes"]), f"{cf.name}: 노드 이름 중복"
+        for src, conn in wf["connections"].items():
+            assert src in names, f"{cf.name}: 없는 출발 노드 '{src}'"
+            for branch in conn["main"]:
+                for link in branch:
+                    assert link["node"] in names, f"{cf.name}: 없는 도착 노드 '{link['node']}'"
+        entry = {n["name"] for n in wf["nodes"] if n["type"].endswith("webhook")}
+        reached = set(entry)
+        for _ in range(len(names)):  # 웹훅에서 모든 노드에 도달 가능한지
+            for src, conn in wf["connections"].items():
+                if src in reached:
+                    reached |= {l["node"] for b in conn["main"] for l in b}
+        assert reached == names, f"{cf.name}: 연결 안 된 노드 {names - reached}"
+
+        # cardnews.py 가 실제로 내보내는 키를 커넥터가 읽는지
+        if "cardnews" in cf.name:
+            body = cf.read_text(encoding="utf-8")
+            for field in ("caption", "media_files"):
+                assert field in body, f"{cf.name}: cardnews 출력 필드 '{field}'를 안 씁니다"
+
+    print(f"\n통과: 도구 {len(tools)}, 콤보 {len(combos)}, 가이드 {len(data['guide'])}단계, "
+          f"커넥터 {len(list((ROOT / 'connectors').glob('*.json')))}개")
     return 0
 
 
@@ -444,6 +602,9 @@ def main():
     pi = sub.add_parser("install", help="도구·콤보 설치")
     pi.add_argument("targets", nargs="+", help="콤보 키 / 도구 키 / all")
     pi.add_argument("--yes", action="store_true", help="실제로 실행 (없으면 미리보기)")
+    pi.add_argument("--skip-installed", action="store_true", help="이미 깔린 건 건너뜀")
+    pst = sub.add_parser("status", help="무엇이 이미 설치되어 있는지 확인")
+    pst.add_argument("targets", nargs="*", default=["all"], help="콤보 키 / 도구 키 (기본 all)")
     ps = sub.add_parser("skill", help="Claude Code 스킬 생성")
     ps.add_argument("--install", action="store_true", help="~/.claude/skills/ 에 설치")
     a = p.parse_args()
@@ -458,7 +619,10 @@ def main():
     if a.cmd == "skill":
         return do_skill(data, a.install)
     try:
-        return do_install(data, a.targets, execute=a.yes)
+        if a.cmd == "status":
+            do_status(data, a.targets or ["all"])
+            return 0
+        return do_install(data, a.targets, execute=a.yes, skip_installed=a.skip_installed)
     except KeyError as k:
         print(f"모르는 키: {k}\n콤보: {', '.join(data['combos'])}\n도구: {', '.join(data['tools'])}")
         return 1
