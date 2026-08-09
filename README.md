@@ -1,5 +1,7 @@
 # stackpack
 
+**허브 페이지 → https://tree8727-coder.github.io/stackpack/**
+
 1인 창업 AI 자동화 스택 — **읽는 카탈로그가 아니라 실행되는 카탈로그.**
 
 도구 27개, 콤보 8개. 전부 `stack.yaml` 하나에서 나옵니다.
@@ -55,6 +57,32 @@ uv run build.py selftest
 | `index.html` | 생성물 — 직접 고치지 마세요 |
 | `stars.json` | 생성물 — `build.py stars`가 씁니다 |
 | `skill/SKILL.md` | 생성물 — `build.py skill`이 씁니다 |
+
+## 배포
+
+`main`은 소스만, `gh-pages`는 빌드된 `index.html`만 담습니다. Pages는 `gh-pages`를 서빙합니다.
+
+**지금은 수동입니다.** `gh` 토큰에 `workflow` 스코프가 없어 CI를 등록하지 못했습니다.
+워크플로 파일은 `ci/pages.yml`에 그대로 보관돼 있습니다.
+
+CI로 전환 (권장, 한 번만 하면 끝):
+
+```powershell
+gh auth refresh -h github.com -s workflow    # 별도 터미널에서 (브라우저 인증)
+mkdir .github\workflows; git mv ci\pages.yml .github\workflows\
+git commit -am "ci: Pages 자동 빌드" ; git push
+```
+
+전환하면 push할 때마다 자동 빌드되고, **매주 월요일 별점이 자동 갱신**됩니다.
+그전까지의 수동 재배포:
+
+```powershell
+uv run build.py stars; uv run build.py html
+git worktree add -f ..\stackpack-pages gh-pages
+Copy-Item index.html ..\stackpack-pages\
+cd ..\stackpack-pages; git add -A; git commit -m deploy; git push
+cd ..\stackpack; git worktree remove -f ..\stackpack-pages
+```
 
 ## 출처
 
