@@ -1,0 +1,639 @@
+# stackpack — 1인 창업 AI 자동화 스택 레지스트리
+#
+# 이 파일이 유일한 진실(single source of truth)입니다.
+# 손으로만 편집하세요. build.py는 이 파일을 절대 덮어쓰지 않습니다.
+# (별점 등 자동 수집 데이터는 stars.json에 따로 쌓입니다)
+#
+# 출처: startup_automation_db/data_pipeline_v7~v10.py 병합 복구
+#   v8 = 도구 21개 (최다 상세)
+#   v9 = crewai, browser-use, aider 추가 (v8에서 유실됐던 항목)
+#   v10 = langgraph, notebooklm, claude-code + 콤보 3종
+
+meta:
+  title: stackpack
+  subtitle: 1인 창업가를 위한 AI 자동화 스택
+  version: 1
+
+tiers:
+  brain:   { name: "🧠 Brain",          desc: "사고 및 기획 중추",       color: "#FF00FF" }
+  nerves:  { name: "⚡ Nerves",          desc: "신경망 및 오케스트레이션", color: "#00FFCC" }
+  hands:   { name: "🖐️ Hands",          desc: "실행, 조작, 변환",        color: "#39FF14" }
+  command: { name: "💻 Command Center", desc: "지휘 및 코딩 터미널",     color: "#FFA500" }
+
+# ─────────────────────────────────────────────────────────────
+# tools — 도구 하나 = 항목 하나. 중복 정의 금지.
+#   install: 여러 줄이면 순서대로 실행. 선행 조건도 여기 포함.
+#   run:     설치 확인 또는 첫 실행 명령
+# ─────────────────────────────────────────────────────────────
+tools:
+
+  # ── 🧠 Brain ────────────────────────────────────────────────
+  ollama:
+    name: Ollama
+    tier: brain
+    icon: "🦙"
+    repo: ollama/ollama
+    tagline: 내 PC에서 돌리는 로컬 AI
+    what: >-
+      ChatGPT 같은 AI를 인터넷 없이 내 컴퓨터에서 실행하게 해주는 도구입니다.
+      Llama 3, Mistral, Gemma 등 수십 개의 AI 모델을 Docker처럼 간단하게 설치하고 실행합니다.
+    why: >-
+      ChatGPT에 월 20달러 내는 대신, 한 번 설치로 무제한 무료 사용이 가능합니다.
+      회사 기밀 데이터를 외부 서버에 보내지 않아도 됩니다.
+    install: |
+      winget install Ollama.Ollama
+    run: ollama pull llama3.2 && ollama run llama3.2
+    difficulty: 초급
+    saves: [비용(AI구독료), 데이터 보안]
+
+  dify:
+    name: Dify
+    tier: brain
+    icon: "🏭"
+    repo: langgenius/dify
+    tagline: 나만의 AI 앱·챗봇 제작소
+    what: >-
+      코딩 없이 나만의 AI 챗봇, 고객 CS 봇, 내부 문서 검색 AI를 만드는 플랫폼입니다.
+      회사 내부 PDF 문서를 학습시켜서 직원들이 자연어로 질문하면 정확히 답변하는 AI 직원을 만들 수 있습니다.
+    why: >-
+      CS 응대, FAQ 반복 답변, 내부 문서 검색에 드는 시간을 90% 줄입니다.
+      외부 AI API 없이 Ollama와 연동하면 완전 무료로 운영 가능합니다.
+    install: |
+      winget install Docker.DockerDesktop
+      git clone https://github.com/langgenius/dify.git
+      docker compose -f dify/docker/docker-compose.yaml up -d
+    run: "# 브라우저에서 http://localhost/install 접속"
+    difficulty: 중급
+    saves: [비용(CS인건비), 시간]
+
+  crewai:
+    name: CrewAI
+    tier: brain
+    icon: "👥"
+    repo: crewAIInc/crewAI
+    tagline: AI 에이전트들의 팀장
+    what: >-
+      '리서치 AI', '글쓰기 AI', '검토 AI' 등 여러 AI에게 역할을 주고
+      서로 대화하며 목표를 달성하게 하는 프레임워크입니다.
+    why: >-
+      나 혼자 일하는 1인 창업가도 '마케팅팀', '개발팀'을 통째로 굴리는 것과 같은 아웃풋을 낼 수 있습니다.
+    install: |
+      uv tool install crewai
+    run: uv run --with crewai my_agents.py
+    difficulty: 고급
+    saves: [인건비(팀원 대체), 품질 검수 시간]
+
+  langgraph:
+    name: LangGraph
+    tier: brain
+    icon: "🕸️"
+    repo: langchain-ai/langgraph
+    tagline: 복잡한 에이전트 상태 제어
+    what: >-
+      에이전트가 여러 단계를 오가며 판단하고 되돌아가는 흐름을
+      그래프 형태로 명시적으로 설계하는 프레임워크입니다.
+    why: >-
+      CrewAI로는 표현이 어려운 조건 분기, 재시도, 사람 승인 대기 같은
+      실무 워크플로우를 안정적으로 굴릴 수 있습니다.
+    install: |
+      uv pip install langgraph
+    run: uv run --with langgraph graph.py
+    difficulty: 고급
+    saves: [에이전트 폭주, 디버깅 시간]
+
+  notebooklm:
+    name: NotebookLM
+    tier: brain
+    icon: "📚"
+    repo: null            # 웹 서비스 — 깃허브 리포 없음
+    tagline: 대규모 문서 딥 리서치
+    what: >-
+      수십 개의 PDF, 논문, 회의록을 한꺼번에 올려두고 근거 인용과 함께 질문하는 구글의 리서치 도구입니다.
+    why: >-
+      로컬 도구를 붙이기 전 단계의 빠른 자료 탐색에 적합합니다. 설치가 필요 없습니다.
+    install: ""           # 설치 대상 아님
+    run: "# https://notebooklm.google.com 접속"
+    difficulty: 초급
+    saves: [자료 조사 시간]
+
+  # ── ⚡ Nerves ───────────────────────────────────────────────
+  n8n:
+    name: n8n
+    tier: nerves
+    icon: "🔁"
+    repo: n8n-io/n8n
+    tagline: 노코드 업무 자동화 허브
+    what: >-
+      마우스 드래그로 서비스들을 연결해 반복 업무를 자동화하는 플랫폼입니다.
+      이메일이 오면 슬랙 알림을 보내고, 스프레드시트에 기록하고, 요약 메일을 발송하는 흐름을 코딩 없이 만들 수 있습니다.
+    why: >-
+      비즈니스에서 반복되는 수작업(복붙, 데이터 이동, 알림)을 완전히 제거합니다.
+      직원 1명이 할 일을 자동화 워크플로우 1개로 대체할 수 있습니다.
+    install: |
+      winget install --id n8n-io.n8n
+    run: n8n start
+    difficulty: 초급
+    saves: [시간, 반복 노동, 구독료(Zapier)]
+
+  # ── 🖐️ Hands ───────────────────────────────────────────────
+  playwright:
+    name: Playwright
+    tier: hands
+    icon: "🎭"
+    repo: microsoft/playwright
+    tagline: 브라우저를 로봇처럼 조종하는 자동화 도구
+    what: >-
+      실제 사람처럼 브라우저를 열고, 클릭하고, 로그인하고, 데이터를 긁어오는 자동화 라이브러리입니다.
+      자바스크립트로 렌더링되는 복잡한 동적 사이트도 완벽하게 크롤링합니다.
+    why: >-
+      경쟁사 가격 모니터링, 자동 주문, 반복 폼 입력 등 매일 수동으로 하는 브라우저 작업을 완전히 없앨 수 있습니다.
+    install: |
+      winget install astral-sh.uv
+      uv run --with playwright python -m playwright install chromium
+    run: uv run --with playwright bot.py
+    difficulty: 중급
+    saves: [시간, 조사 비용]
+
+  browser-use:
+    name: Browser-use
+    tier: hands
+    icon: "🖱️"
+    repo: browser-use/browser-use
+    tagline: AI에게 쥐어주는 마우스와 키보드
+    what: >-
+      AI가 스스로 화면을 분석하고 버튼을 클릭하며 브라우저를 직접 조작하게 만드는 최신 에이전트 도구입니다.
+      Playwright가 정밀한 로봇 팔이라면, Browser-use는 목적만 주면 알아서 판단합니다.
+    why: >-
+      API가 없는 폐쇄적인 레거시 사이트나 구형 ERP에서도 AI가 사람처럼 행동할 수 있습니다.
+    install: |
+      uv pip install browser-use playwright
+      uv run --with playwright python -m playwright install chromium
+    run: uv run --with browser-use agent.py
+    difficulty: 중급
+    saves: [웹 노가다, 매크로 제작 시간]
+
+  firecrawl:
+    name: Firecrawl
+    tier: hands
+    icon: "🕷️"
+    repo: mendableai/firecrawl
+    tagline: AI 친화적 웹 스크래핑 CLI
+    what: >-
+      웹사이트 URL 하나를 주면 내부 링크를 타고 들어가며 전체 사이트를 긁어온 뒤,
+      깔끔한 마크다운이나 JSON으로 변환해주는 크롤링 도구입니다.
+    why: >-
+      경쟁사 블로그 전체를 긁어서 Dify나 CrewAI에게 한 번에 먹일 수 있습니다.
+    install: |
+      winget install OpenJS.NodeJS.LTS
+      npm install -g @mendable/firecrawl-cli
+    run: firecrawl scrape https://example.com
+    difficulty: 중급
+    saves: [리서치 시간, 정제(파싱) 노동]
+
+  imagemagick:
+    name: ImageMagick
+    tier: hands
+    icon: "🎨"
+    repo: ImageMagick/ImageMagick
+    tagline: 터미널에서 이미지를 일괄 처리하는 포토샵
+    what: >-
+      수백 장의 이미지를 리사이즈, 형식 변환, 텍스트 삽입, 워터마크 추가를 코드 한 줄로 일괄 처리하는 도구입니다.
+      GUI 없이 명령어만으로 포토샵의 90% 기능을 사용합니다.
+    why: >-
+      카드뉴스 100장 만드는 데 포토샵에서 10시간 걸리던 것을 스크립트 1개로 30분 안에 끝낼 수 있습니다.
+    install: |
+      winget install ImageMagick.ImageMagick
+    run: magick --version
+    difficulty: 중급
+    saves: [시간, 비용(포토샵 구독료)]
+
+  ffmpeg:
+    name: FFmpeg
+    tier: hands
+    icon: "🎬"
+    repo: FFmpeg/FFmpeg
+    tagline: 터미널에서 영상을 편집하는 프리미어 프로
+    what: >-
+      영상 변환, 자르기, 합치기, 자막 삽입, 해상도 변경을 명령어 한 줄로 처리하는 영상 처리 도구입니다.
+      유튜브·넷플릭스·인스타그램 등 거의 모든 플랫폼이 내부적으로 FFmpeg를 사용합니다.
+    why: >-
+      이미지 여러 장을 합쳐서 릴스/쇼츠 영상을 자동 생성하거나,
+      영상 파일 크기를 80% 줄이는 등 영상 관련 반복 작업을 완전히 자동화합니다.
+    install: |
+      winget install Gyan.FFmpeg
+    run: ffmpeg -version
+    difficulty: 중급
+    saves: [시간, 비용(편집 프로그램)]
+
+  pandoc:
+    name: Pandoc
+    tier: hands
+    icon: "📝"
+    repo: jgm/pandoc
+    tagline: 만능 문서 포맷 변환기
+    what: >-
+      마크다운(.md), 워드(.docx), PDF, HTML, 슬라이드 등 거의 모든 문서 포맷을 서로 자유롭게 변환합니다.
+      '문서 변환의 스위스 군용 칼'이라 불립니다.
+    why: >-
+      AI가 마크다운으로 써준 보고서를 클릭 한 번으로 경영진용 PDF, 웹용 HTML, 워드 파일로 동시에 출력합니다.
+    install: |
+      winget install JohnMacFarlane.Pandoc
+    run: pandoc 회의록.md -o 보고서.docx
+    difficulty: 초급
+    saves: [시간, 보고서 작성 노동]
+
+  stirling-pdf:
+    name: Stirling-PDF
+    tier: hands
+    icon: "📄"
+    repo: Stirling-Tools/Stirling-PDF
+    tagline: 모든 PDF 작업을 처리하는 셀프호스팅 서버
+    what: >-
+      PDF 병합, 분할, 압축, 페이지 회전, 워터마크, 암호화, 워드 변환까지
+      50가지 이상의 PDF 기능을 브라우저에서 무료로 처리하는 오픈소스 서버입니다.
+    why: >-
+      Adobe Acrobat Pro 연간 구독료(25만 원+)를 완전히 대체합니다.
+      회사 내부 서버에 설치하면 팀 전체가 함께 무료로 사용할 수 있습니다.
+    install: |
+      winget install Docker.DockerDesktop
+      docker run -d -p 8080:8080 frooodle/s-pdf:latest
+    run: "# 브라우저에서 http://localhost:8080 접속"
+    difficulty: 초급
+    saves: [비용(Adobe구독료), 시간]
+
+  jq:
+    name: jq
+    tier: hands
+    icon: "🔧"
+    repo: jqlang/jq
+    tagline: JSON 데이터 처리 CLI 도구
+    what: >-
+      API나 크롤링으로 받아온 JSON 데이터에서 원하는 값만 추출하거나 변환하는 도구입니다.
+      복잡한 JSON 구조를 파이썬 코드 없이 명령어 한 줄로 처리합니다.
+    why: >-
+      Firecrawl로 긁어온 JSON 데이터에서 '제목' 필드만 뽑거나,
+      API 응답에서 특정 값만 추출할 때 코딩 없이 처리가 가능합니다.
+    install: |
+      winget install jqlang.jq
+    run: cat data.json | jq '.content'
+    difficulty: 중급
+    saves: [파싱 코드 작성 시간]
+
+  sqlite-utils:
+    name: sqlite-utils
+    tier: hands
+    icon: "🗄️"
+    repo: simonw/sqlite-utils
+    tagline: CSV·JSON 데이터를 즉시 DB로 변환하는 CLI
+    what: >-
+      CSV, JSON 파일을 명령어 한 줄로 SQLite 데이터베이스에 저장하고, SQL 쿼리로 분석하는 도구입니다.
+      엑셀보다 빠르고, 정식 DB보다 설치가 훨씬 쉽습니다.
+    why: >-
+      크롤링으로 수집한 경쟁사 데이터를 바로 데이터베이스화해서
+      날짜별 가격 변화, 제품 비교 등 정교한 분석이 가능합니다.
+    install: |
+      winget install astral-sh.uv
+      uv tool install sqlite-utils
+    run: sqlite-utils query data.db "SELECT * FROM 테이블명 LIMIT 10"
+    difficulty: 중급
+    saves: [엑셀 깨짐, 분석 시간]
+
+  hledger:
+    name: hledger
+    tier: hands
+    icon: "🧾"
+    repo: simonmichael/hledger
+    tagline: 텍스트 파일 기반 회계 장부 시스템
+    what: >-
+      지출 내역을 정해진 형식의 텍스트로 기록하면 자동으로 손익계산서, 재무상태표, 현금흐름표를 생성합니다.
+      Git과 결합하면 모든 수정 이력이 남는 감사 추적 장부가 됩니다.
+    why: >-
+      QuickBooks·더존 같은 회계 프로그램 구독료를 없애고,
+      AI와 조합하면 영수증 사진을 텍스트로 자동 변환해 입력 수고도 없앨 수 있습니다.
+    install: |
+      winget install hledger
+    run: hledger -f journal.txt balance
+    difficulty: 고급
+    saves: [비용(회계프로그램), 시간]
+
+  # ── 💻 Command Center ──────────────────────────────────────
+  uv:
+    name: uv
+    tier: command
+    icon: "🚀"
+    repo: astral-sh/uv
+    tagline: 파이썬 라이브러리 초고속 설치 도구
+    what: >-
+      파이썬의 패키지를 기존 pip보다 100배 빠르게 설치하고 관리하는 도구입니다.
+      별도로 파이썬을 설치하지 않아도 uv 혼자 모든 걸 처리합니다.
+    why: >-
+      'pip install'이 5분 걸리던 것이 3초로 줄어듭니다. 파이썬 환경 충돌 문제도 자동으로 해결합니다.
+      이 저장소의 build.py도 uv로 실행합니다.
+    install: |
+      winget install astral-sh.uv
+    run: uv --version
+    difficulty: 초급
+    saves: [대기 시간, 환경 셋팅 멘붕]
+
+  aider:
+    name: Aider
+    tier: command
+    icon: "👨‍💻"
+    repo: Aider-AI/aider
+    tagline: 터미널 속 시니어 개발자
+    what: >-
+      명령줄에서 내 코드 전체를 읽고, 내가 말한 대로 코드를 수정해주는 AI 코딩 에이전트입니다.
+    why: >-
+      복잡한 VSCode 설정 없이, 터미널에서 '에러 해결해줘' 한 마디면 코드를 알아서 고치고 Git 커밋까지 해줍니다.
+    install: |
+      uv tool install aider-chat
+    run: aider
+    difficulty: 초급
+    saves: [코딩 시간, 타이핑 노동]
+
+  claude-code:
+    name: Claude Code
+    tier: command
+    icon: "🤖"
+    repo: anthropics/claude-code
+    tagline: 전천후 터미널 코워커
+    what: >-
+      터미널에서 코드를 읽고 쓰고 명령을 실행하는 에이전트입니다.
+      이 stackpack의 스킬(SKILL.md)을 꽂으면 아래 콤보들을 직접 설치·실행합니다.
+    why: >-
+      카탈로그를 '읽는' 단계에서 '시키는' 단계로 넘어가는 지점입니다.
+    install: |
+      npm install -g @anthropic-ai/claude-code
+    run: claude
+    difficulty: 초급
+    saves: [문맥 전환, 문서 찾는 시간]
+
+  fzf:
+    name: fzf
+    tier: command
+    icon: "⚡"
+    repo: junegunn/fzf
+    tagline: 터미널 퍼지 검색 파인더
+    what: >-
+      터미널에서 파일, 명령어 히스토리, 검색 결과를 실시간으로 필터링하며 선택하는 인터랙티브 검색 도구입니다.
+      타이핑할 때마다 0.1초 만에 결과가 업데이트됩니다.
+    why: >-
+      수천 개의 파일 중 원하는 것을 찾거나, 이전에 실행했던 긴 명령어를 다시 찾을 때
+      키보드만으로 즉시 선택할 수 있어 마우스 조작을 90% 줄입니다.
+    install: |
+      winget install junegunn.fzf
+    run: fzf
+    difficulty: 초급
+    saves: [마우스 클릭, 파일 찾는 시간]
+
+  ripgrep:
+    name: ripgrep (rg)
+    tier: command
+    icon: "🔍"
+    repo: BurntSushi/ripgrep
+    tagline: 초고속 텍스트 파일 내 검색 도구
+    what: >-
+      수천 개의 파일 안의 텍스트를 구글처럼 순식간에 검색합니다.
+      기존 grep보다 10~100배 빠르며, .gitignore에 있는 불필요한 폴더는 자동으로 건너뜁니다.
+    why: >-
+      회의록, 계약서, 코드 파일 수백 개 중에서 특정 단어가 들어간 파일을 0.1초 만에 찾아냅니다.
+    install: |
+      winget install BurntSushi.ripgrep.MSVC
+    run: rg '계약 조건' ./contracts/ -l
+    difficulty: 초급
+    saves: [시간, 문서 검토 노동]
+
+  bat:
+    name: bat
+    tier: command
+    icon: "🦇"
+    repo: sharkdp/bat
+    tagline: 구문 색상이 입혀진 cat 명령어 대체재
+    what: >-
+      터미널에서 파일 내용을 볼 때 코드에 자동으로 색을 입혀주는 도구입니다.
+      기본 cat 명령어와 동일하지만, VSCode에서 보는 것처럼 파일이 예쁘게 출력됩니다.
+    why: >-
+      fzf + ripgrep과 조합하면 검색 결과 프리뷰 창에 색상이 입혀져 어느 파일인지 한눈에 파악됩니다.
+    install: |
+      winget install sharkdp.bat
+    run: bat report.md
+    difficulty: 초급
+    saves: [눈의 피로]
+
+  glow:
+    name: glow
+    tier: command
+    icon: "✨"
+    repo: charmbracelet/glow
+    tagline: 터미널 마크다운 예쁜 뷰어
+    what: >-
+      마크다운을 제목, 굵기, 코드 블록 등 서식이 적용된 예쁜 형태로 렌더링해서 터미널에 보여줍니다.
+    why: >-
+      Pandoc으로 변환하기 전에 내용이 올바른지 빠르게 확인하고,
+      AI가 써준 마크다운 초안을 터미널에서 바로 검토할 때 사용합니다.
+    install: |
+      winget install charmbracelet.glow
+    run: glow 회의록.md
+    difficulty: 초급
+    saves: [미리보기 왕복]
+
+  lazygit:
+    name: lazygit
+    tier: command
+    icon: "🌿"
+    repo: jesseduffield/lazygit
+    tagline: 터미널 내 시각적 Git 관리 UI
+    what: >-
+      복잡한 Git 명령어를 외울 필요 없이, 터미널 안에서 파일 선택 → 스페이스바 → c(커밋) → p(푸시)
+      세 번의 키 입력으로 버전 관리를 처리합니다.
+    why: >-
+      Git을 어렵게 느끼는 비개발자도 10분 안에 버전 관리를 시작할 수 있습니다.
+      hledger 회계 장부를 Git으로 관리하면 모든 수정 이력이 타임스탬프와 함께 남습니다.
+    install: |
+      winget install JesseDuffield.lazygit
+    run: lazygit
+    difficulty: 초급
+    saves: [Git 명령어 암기]
+
+  starship:
+    name: Starship
+    tier: command
+    icon: "💻"
+    repo: starship/starship
+    tagline: 터미널 프롬프트 커스터마이저
+    what: >-
+      기본 까만 화면에 폴더 경로만 보이는 터미널을 Git 상태, 언어 버전, 시스템 정보가
+      색상으로 표시되는 프롬프트로 꾸며주는 도구입니다.
+    why: >-
+      현재 어떤 Git 브랜치에 있는지, 어떤 파이썬 버전을 쓰는지가 한눈에 보여 실수를 줄입니다.
+    install: |
+      winget install Starship.Starship
+      Add-Content $PROFILE 'Invoke-Expression (&starship init powershell)'
+    run: "# 터미널 재시작"
+    difficulty: 초급
+    saves: [생산성, 심리적 동기부여]
+
+  fastfetch:
+    name: fastfetch
+    tier: command
+    icon: "🖥️"
+    repo: fastfetch-cli/fastfetch
+    tagline: 시스템 정보 한눈에 보기 도구
+    what: >-
+      터미널을 열었을 때 CPU, RAM, GPU, OS 버전 등 내 컴퓨터 사양을
+      아스키 아트와 함께 출력해주는 도구입니다. neofetch의 빠른 후계자입니다.
+    why: >-
+      서버나 개발 환경의 현황을 빠르게 파악할 때 사용합니다.
+    install: |
+      winget install Fastfetch-cli.Fastfetch
+    run: fastfetch
+    difficulty: 초급
+    saves: [사양 확인 시간]
+
+  zoxide:
+    name: zoxide
+    tier: command
+    icon: "🧭"
+    repo: ajeetdsouza/zoxide
+    tagline: 스마트 디렉터리 순간이동 도구
+    what: >-
+      cd 명령어의 스마트 버전입니다. 한 번 방문한 폴더를 학습해서,
+      이후에는 폴더 이름의 일부만 타이핑해도 바로 이동합니다.
+    why: >-
+      매일 cd ../../../projects/my-startup/marketing처럼 긴 경로를 타이핑하는 시간을 없앨 수 있습니다.
+    install: |
+      winget install ajeetdsouza.zoxide
+      Add-Content $PROFILE 'Invoke-Expression (& { (zoxide init powershell | Out-String) })'
+    run: z startup
+    difficulty: 초급
+    saves: [경로 타이핑]
+
+# ─────────────────────────────────────────────────────────────
+# combos — 도구 조합 = 실제 업무 하나.
+#   tools:  위 tools의 키만 참조. 설치 명령은 여기 적지 않습니다.
+#           build.py가 멤버 도구의 install을 순서대로 이어붙여 자동 생성합니다.
+#           (예전 파이프라인이 install_cmd를 콤보마다 복붙하다 어긋난 지점)
+# ─────────────────────────────────────────────────────────────
+combos:
+
+  content-factory:
+    name: "💥 무한 콘텐츠 공장"
+    role: "📢 마케터"
+    tools: [uv, imagemagick, ffmpeg, n8n]
+    desc: >-
+      대본만 있으면 파이썬이 카드뉴스 이미지를 찍어내고 FFmpeg가 릴스·쇼츠로 병합한 뒤
+      n8n이 SNS에 자동 발행합니다. 포토샵·프리미어 없이 콘텐츠 100장을 30분 안에 뽑아냅니다.
+    run: uv run examples/cardnews.py && ffmpeg -framerate 1/3 -i out/slide_%d.png -r 30 -pix_fmt yuv420p out/shorts.mp4
+    example: examples/cardnews.py
+    prompt: >-
+      1인 창업가를 위한 마케팅 카드뉴스 4장을 [헤드라인 / 본문 / 강조색 HEX] 형태의 JSON으로만 줘.
+      이 데이터로 이미지를 자동 생성할 거야.
+    saves: [시간, 비용(포토샵 구독료)]
+    difficulty: 중급
+
+  insight-alchemy:
+    name: "💥 경쟁사 리포트 연금술"
+    role: "📈 데이터/리서치"
+    tools: [firecrawl, jq, sqlite-utils, pandoc]
+    desc: >-
+      경쟁사 사이트를 통째로 긁어와 필요한 필드만 발라내고 로컬 DB에 쌓은 뒤,
+      경영진 보고용 PDF로 변환해 매주 배달합니다. 하루 2시간짜리 시장조사가 명령 한 줄이 됩니다.
+    run: firecrawl scrape https://경쟁사.com | jq '.content' | sqlite-utils insert data.db competitors -
+    prompt: >-
+      아래 크롤링한 경쟁사 JSON 데이터를 분석해서, 우리가 공략할 고객 불만 포인트 3가지와
+      차별화 전략을 뽑아내줘.
+    saves: [시간, 리서치 외주비용]
+    difficulty: 고급
+
+  ghost-employee:
+    name: "💥 고스트 임플로이"
+    role: "🤖 AI/자동화"
+    tools: [browser-use, playwright, langgraph]
+    desc: >-
+      API가 없는 레거시 ERP나 낡은 구형 사이트에 AI가 직접 로그인해
+      마우스를 클릭하며 정산·주문 작업을 처리합니다.
+    run: uv run --with browser-use agent.py
+    prompt: >-
+      Browser-use로 [사이트]에 로그인해서 어제자 주문 목록을 CSV로 내려받는 스크립트를 써줘.
+      실패하면 3번까지 재시도하도록.
+    saves: [웹 노가다, RPA 라이선스비]
+    difficulty: 고급
+
+  local-brain:
+    name: "💥 무료 사내 AI 직원"
+    role: "🤖 AI/자동화"
+    tools: [ollama, dify, n8n]
+    desc: >-
+      회사 PDF를 학습한 CS 봇을 내 PC의 로컬 LLM으로 굴립니다.
+      API 비용 0원, 데이터 외부 유출 0건. n8n으로 카톡·슬랙에 연결합니다.
+    run: ollama run llama3.2
+    prompt: >-
+      Dify에서 회사 복지제도 PDF를 학습시켜 직원들이 자연어로 물어보는 FAQ 봇을 만드는
+      설정 절차를 단계별로 설명해줘.
+    saves: [비용(AI구독료), 비용(CS인건비), 데이터 보안]
+    difficulty: 중급
+
+  agent-crew:
+    name: "💥 AI 마케팅팀 고용"
+    role: "📢 마케터"
+    tools: [crewai, ollama, firecrawl]
+    desc: >-
+      '리서처 → 라이터 → 검토자' 역할을 나눠 가진 AI 에이전트들이 서로 대화하며
+      블로그 글 한 편을 끝까지 완성합니다. 1인 창업가가 팀장이 되는 지점입니다.
+    run: uv run --with crewai my_agents.py
+    prompt: >-
+      마케터 AI야, 리서처 AI가 Firecrawl로 가져온 데이터를 바탕으로 블로그 글을 써줘.
+      검토자 AI는 과장된 표현을 찾아 지적해.
+    saves: [인건비(팀원 대체), 품질 검수 시간]
+    difficulty: 고급
+
+  paper-shredder:
+    name: "💥 회의록 → 보고서 1초 변환"
+    role: "🧠 PM/기획자"
+    tools: [glow, pandoc, stirling-pdf]
+    desc: >-
+      메모장에 대충 써놓은 마크다운 회의록을 터미널에서 미리 보고,
+      바로 PDF·워드·HTML 보고서로 변환합니다. 2시간짜리 보고서 작업이 10초가 됩니다.
+    run: glow meeting.md && pandoc meeting.md -o report.pdf
+    prompt: >-
+      아래 두서없는 회의 녹취록을 [배경 / 결정사항 / 액션아이템 / 담당자 / 기한]
+      마크다운 구조로 정리해줘.
+    saves: [시간, 보고서 작성 노동]
+    difficulty: 초급
+
+  hacker-desk:
+    name: "💥 해커 사령실 세팅"
+    role: "👑 CEO (공통)"
+    tools: [starship, zoxide, fzf, ripgrep, bat, lazygit, fastfetch]
+    desc: >-
+      까만 터미널을 Git 상태·언어 버전이 색으로 보이는 사령실로 바꾸고,
+      키보드만으로 수천 개 파일을 날아다니는 환경을 만듭니다. 다른 모든 콤보의 바닥입니다.
+    run: rg --line-number '검색어' | fzf --preview 'bat --color=always {1} --highlight-line {2}'
+    prompt: "(설치만 하면 됩니다. 터미널을 여는 순간 체감됩니다.)"
+    saves: [생산성, 심리적 동기부여]
+    difficulty: 초급
+
+  ledger-bot:
+    name: "💥 영수증 → 재무제표 자동화"
+    role: "💰 재무/회계"
+    tools: [hledger, lazygit, ollama]
+    desc: >-
+      영수증 사진을 로컬 AI가 텍스트로 바꾸고, hledger가 손익계산서를 계산하고,
+      lazygit이 모든 수정 이력을 감사 추적으로 남깁니다.
+    run: hledger -f journal.txt incomestatement
+    prompt: >-
+      이 영수증 내용을 hledger 문법으로 변환해줘.
+      형식은 [2026-08-08 * 거래처명 설명 / expenses:항목 금액 / assets:통장 -금액], 부가세는 별도 항목으로.
+    saves: [비용(회계프로그램), 시간]
+    difficulty: 고급
+
+# ─────────────────────────────────────────────────────────────
+# guide — 창업 단계별 도입 순서 (v8 startup_guide 복구)
+# ─────────────────────────────────────────────────────────────
+guide:
+  - { step: 1, phase: 시장 조사,       icon: "🔍", desc: 경쟁사 분석과 아이디어 검증,       combos: [insight-alchemy],                duration: 1~2주 }
+  - { step: 2, phase: 기획 & 문서화,   icon: "📝", desc: 사업계획서·회의록·보고서 자동화,   combos: [paper-shredder],                 duration: 1~2주 }
+  - { step: 3, phase: 작업 환경 구축,  icon: "💻", desc: 터미널 사령실과 검색 환경 세팅,    combos: [hacker-desk],                    duration: 1일 }
+  - { step: 4, phase: AI 기반 구축,    icon: "🤖", desc: 사내 AI 비서 및 자동화 신경망,     combos: [local-brain],                    duration: 1주 }
+  - { step: 5, phase: 마케팅 & 홍보,   icon: "📢", desc: 콘텐츠 자동 생성과 발행,           combos: [content-factory, agent-crew],    duration: 상시 }
+  - { step: 6, phase: 운영 & 정산,     icon: "💰", desc: 자동 회계 및 레거시 업무 대행,     combos: [ledger-bot, ghost-employee],     duration: 상시 }
