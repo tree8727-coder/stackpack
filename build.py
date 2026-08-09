@@ -178,7 +178,9 @@ pre{background:#000;padding:14px;border-radius:6px;border-left:3px solid var(--l
 font-family:'Consolas',monospace;font-size:.85em;overflow-x:auto;margin:10px 0;white-space:pre-wrap;
 word-break:break-all;cursor:pointer;user-select:all}
 pre:hover{background:#050505}
-.hint{color:var(--dim);font-size:.75em;margin:4px 0 0}
+.hint{color:var(--dim);font-size:.8em;margin:6px 0 0}
+.hint code{font-size:1.05em;color:var(--cyan);background:rgba(0,255,204,.08);
+border:1px solid rgba(0,255,204,.2);padding:2px 7px;border-radius:3px}
 .saves span{font-size:.75em;color:var(--lime);border:1px solid rgba(57,255,20,.3);padding:2px 8px;
 border-radius:10px;margin-right:6px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
@@ -294,14 +296,15 @@ def do_html(data):
         }
         for k, t in tools.items()
     }
-    stamp = stars.get("_fetched", "별점 미수집 — uv run build.py stars")
+    fetched = stars.get("_fetched")
+    stamp = f"★ 깃허브 별점 {fetched[:10]} 기준" if fetched else "별점 미수집 — uv run build.py stars"
 
     page = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(data['meta']['title'])} — {e(data['meta']['subtitle'])}</title><style>{CSS}</style></head><body><div class="wrap">
 <h1>{e(data['meta']['title'])}</h1>
 <div class="sub">{e(data['meta']['subtitle'])} · 도구 {len(tools)}개 · 콤보 {len(combos)}개</div>
-<div class="stamp">★ {e(str(stamp))}</div>
+<div class="stamp">{e(stamp)}</div>
 
 <h2>1. 콤보 — 조합 하나 = 업무 하나</h2>{combo_html}
 
