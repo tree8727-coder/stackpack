@@ -6,3 +6,4 @@ skill/
 # examples/cardnews.py 출력
 out/
 out_test.png
+__pycache__/
