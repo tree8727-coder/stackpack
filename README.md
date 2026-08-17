@@ -4,7 +4,9 @@
 
 1인 창업 AI 자동화 스택 — **읽는 카탈로그가 아니라 실행되는 카탈로그.**
 
-도구 27개, 콤보 8개. 전부 `stack.yaml` 하나에서 나옵니다.
+도구 31개, 콤보 9개. 전부 `stack.yaml` 하나에서 나옵니다.
+
+(이 숫자는 `build.py selftest`가 `stack.yaml` 실제 개수와 대조합니다. 손으로 안 맞춰도 됩니다 — 틀리면 터집니다.)
 
 ```
 stack.yaml  ←  유일한 진실. 손으로만 편집.
@@ -62,6 +64,9 @@ uv run build.py selftest
 - **미리보기 모드가 어떤 경우에도 명령을 실행하지 않는지**
 - **`status`의 확인 명령에 설치 동사(`install`/`clone`/`docker run`)가 섞이지 않았는지**
 - 커넥터 노드 그래프에 끊긴 노드가 없는지, `cardnews.py` 출력 필드와 맞는지
+- **모델 가격표(`models`)가 90일 넘게 안 갱신됐는지** — 넘으면 실패합니다 ([MODELS-UPDATE.md](MODELS-UPDATE.md))
+- README의 도구·콤보 개수가 `stack.yaml` 실제와 맞는지
+- 모델 섹션이 허브 페이지 밖(`skill/SKILL.md`)으로 새어나가지 않았는지
 
 `uv run examples/cardnews.py --demo`는 페이로드가 커넥터가 읽는 모양인지까지 검사합니다.
 
@@ -69,7 +74,8 @@ uv run build.py selftest
 
 | 파일 | 역할 |
 |---|---|
-| `stack.yaml` | 도구·콤보·가이드 데이터. 여기만 고치면 됩니다 |
+| `stack.yaml` | 도구·콤보·가이드·모델 데이터. 여기만 고치면 됩니다 |
+| `MODELS-UPDATE.md` | `models` 섹션 갱신 절차 (90일마다 selftest가 요구) |
 | `build.py` | 렌더러 + 설치기 + 스킬 생성기 + 자체 검사 |
 | `examples/cardnews.py` | content-factory 콤보의 실행 예제 |
 | `connectors/` | 예제 출력을 실제 서비스로 흘려보내는 n8n 워크플로 |

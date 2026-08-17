@@ -18,11 +18,12 @@ import argparse
 import html
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -277,6 +278,19 @@ border-radius:8px;box-shadow:0 0 40px rgba(0,255,204,.25);position:relative}
 .mtxt{line-height:1.7;color:#bbb}
 .mbox a{color:var(--dim);font-size:.85em}
 footer{text-align:center;color:var(--dim);font-size:.8em;margin-top:70px;line-height:1.8}
+.mnote{color:#bbb;line-height:1.7;border-left:3px solid var(--amber);padding:2px 0 2px 16px;margin:0 0 24px}
+table.mtab{width:100%;border-collapse:collapse;font-size:.9em;margin-bottom:24px}
+table.mtab th{text-align:left;color:var(--dim);font-weight:400;font-size:.8em;letter-spacing:1px;
+text-transform:uppercase;border-bottom:1px solid var(--line);padding:8px 10px}
+table.mtab td{border-bottom:1px solid var(--line);padding:10px;vertical-align:top}
+table.mtab td.n{font-family:monospace;color:var(--cyan);white-space:nowrap}
+table.mtab td.x{font-family:monospace;color:var(--amber);white-space:nowrap}
+table.mtab code{color:var(--dim);font-size:.85em}
+ul.warn{list-style:none;padding:0;margin:0}
+ul.warn li{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--magenta);
+border-radius:6px;padding:14px 18px;margin-bottom:10px;color:#bbb;line-height:1.7}
+ul.warn a{color:var(--dim);font-size:.8em;text-decoration:none}
+ul.warn a:hover{color:var(--cyan)}
 """
 
 JS = """
@@ -312,6 +326,53 @@ def connector_note(combo):
     return (f'<p class="hint">n8n 커넥터: '
             f'<a href="{REPO_BLOB}/connectors/{html.escape(name)}">{html.escape(name)}</a>'
             f' — n8n에서 Import from File</p>')
+
+
+MODELS_MAX_AGE_DAYS = 90
+
+
+def models_age_days(data, today=None):
+    """models.as_of 가 며칠 지났는지. 갱신 절차는 MODELS-UPDATE.md."""
+    as_of = datetime.strptime(str(data["models"]["as_of"]), "%Y-%m-%d").date()
+    return ((today or date.today()) - as_of).days
+
+
+def models_html(data):
+    """모델 선택 섹션. 허브 페이지 전용 — 스킬에는 넣지 않습니다(설치 하네스를 살찌우지 않음)."""
+    m = data["models"]
+    e = html.escape
+    base_in = min(c["price_in"] for c in m["catalog"])
+    base_out = min(c["price_out"] for c in m["catalog"])
+
+    rows = ""
+    for c in m["catalog"]:
+        mi, mo = c["price_in"] / base_in, c["price_out"] / base_out
+        # 지금은 모든 모델이 입력:출력 1:5라 두 배수가 같습니다. 갈라지면 그때만 둘 다 보여줍니다.
+        mult = f"×{mi:g}" if mi == mo else f"입력 ×{mi:g} / 출력 ×{mo:g}"
+        rows += f"""
+        <tr><td><b>{e(c['name'])}</b><br><code>{e(c['id'])}</code></td>
+          <td class="n">${c['price_in']} / ${c['price_out']}</td>
+          <td class="x">{e(mult)}</td>
+          <td class="n">{e(str(c['context']))}</td>
+          <td>{e(c['use_for'])}</td></tr>"""
+
+    warns = "".join(
+        f'<li>{e(w["text"].strip())}<br><a href="{e(w["source"])}" target="_blank" rel="noopener">→ 출처</a></li>'
+        for w in m["warnings"]
+    )
+    age = models_age_days(data)
+    stale = f" · <b style=\"color:var(--magenta)\">{age}일 경과 — 갱신 필요</b>" if age > MODELS_MAX_AGE_DAYS else ""
+
+    return f"""
+<p class="mnote">{e(m['principle']['text'].strip())}
+  <a href="{e(m['principle']['source'])}" target="_blank" rel="noopener" style="color:var(--dim);font-size:.8em">→ 출처</a></p>
+
+<table class="mtab">
+  <tr><th>모델</th><th>$/MTok 입력 / 출력</th><th>최저가 대비</th><th>컨텍스트</th><th>이럴 때</th></tr>{rows}
+</table>
+
+<ul class="warn">{warns}</ul>
+<p class="hint">가격·권고 기준일 {e(str(m['as_of']))}{stale} · 갱신 절차: <a href="{REPO_BLOB}/MODELS-UPDATE.md" style="color:var(--dim)">MODELS-UPDATE.md</a></p>"""
 
 
 def do_html(data):
@@ -390,6 +451,8 @@ def do_html(data):
 
 <h2>3. 창업 단계별 도입 순서</h2>{guide_html}
 
+<h2>4. 모델 선택 — 갈아타기 전에 effort부터</h2>{models_html(data)}
+
 <div id="modal"><div class="mbox"><span class="close" onclick="hide()">&times;</span>
   <h2 id="mName"></h2><p class="tl" id="mTag"></p>
   <div class="lb">무엇인가</div><p class="mtxt" id="mWhat"></p>
@@ -411,7 +474,8 @@ uv run build.py html | stars | install &lt;키&gt; [--yes] | skill</footer>
 
 # ─── Claude Code 스킬 ────────────────────────────────────────────────────────
 
-def do_skill(data, install=False):
+def skill_body(data):
+    """스킬 본문 문자열. 파일로 쓰지 않으므로 selftest가 내용만 검사할 수 있습니다."""
     tools, combos = data["tools"], data["combos"]
     rows = "\n".join(
         f"| `{k}` | {c['name']} | {' + '.join(tools[t]['name'] for t in c['tools'])} | {c['desc'].strip().splitlines()[0]} |"
@@ -499,6 +563,11 @@ uv run {ROOT / 'build.py'} status <키>
 - `status`가 "확인 불가"로 나오는 것들은 CLI가 없는 도구입니다(웹 서비스·도커·파이썬 라이브러리).
   없다는 뜻이 아닙니다.
 """
+    return body
+
+
+def do_skill(data, install=False):
+    body = skill_body(data)
     out = ROOT / "skill" / "SKILL.md"
     out.parent.mkdir(exist_ok=True)
     out.write_text(body, encoding="utf-8")
@@ -586,8 +655,36 @@ def do_selftest(data):
             for field in ("caption", "media_files"):
                 assert field in body, f"{cf.name}: cardnews 출력 필드 '{field}'를 안 씁니다"
 
+    # 8. models — 숫자와 권고는 썩습니다. 사람이 아니라 이 단언이 잡습니다.
+    m = data["models"]
+    age = models_age_days(data)
+    assert age <= MODELS_MAX_AGE_DAYS, (
+        f"models.as_of({m['as_of']})가 {age}일 지났습니다. "
+        f"MODELS-UPDATE.md 절차로 갱신하세요.")
+    for c in m["catalog"]:
+        for f in ("id", "name", "price_in", "price_out", "context", "use_for"):
+            assert c.get(f) not in (None, ""), f"모델 {c.get('id', '?')}: '{f}' 누락"
+        for f in ("price_in", "price_out"):  # 문자열이면 배수 계산이 깨집니다
+            assert isinstance(c[f], (int, float)), f"모델 {c['id']}: {f}는 숫자여야 합니다"
+    for w in [m["principle"], *m["warnings"]]:  # 문구마다 출처 — 갱신 때 여기만 다시 읽으면 됩니다
+        assert w.get("source", "").startswith("http"), f"출처 없는 문구: {w['text'][:30]}…"
+
+    # 9. README의 개수가 실제와 맞는지 — 도구를 추가하면 여기서 걸립니다
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    mt = re.search(r"도구 (\d+)개, 콤보 (\d+)개", readme)
+    assert mt, "README에서 '도구 N개, 콤보 M개' 문장을 못 찾았습니다"
+    assert (int(mt[1]), int(mt[2])) == (len(tools), len(combos)), (
+        f"README는 도구 {mt[1]}/콤보 {mt[2]}인데 실제는 {len(tools)}/{len(combos)}입니다")
+
+    # 10. models는 허브 페이지 전용 — 스킬(설치 하네스)에 새어나가면 안 됩니다
+    sb = skill_body(data)
+    for c in m["catalog"]:
+        assert c["id"] not in sb, f"SKILL.md에 모델 '{c['id']}'가 새어나갔습니다"
+    assert "MTok" not in sb, "SKILL.md에 모델 가격표가 새어나갔습니다"
+
     print(f"\n통과: 도구 {len(tools)}, 콤보 {len(combos)}, 가이드 {len(data['guide'])}단계, "
-          f"커넥터 {len(list((ROOT / 'connectors').glob('*.json')))}개")
+          f"커넥터 {len(list((ROOT / 'connectors').glob('*.json')))}개, "
+          f"모델 {len(m['catalog'])}개(기준일 {m['as_of']}, {age}일 경과)")
     return 0
 
 

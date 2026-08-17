@@ -743,3 +743,67 @@ guide:
   - { step: 4, phase: AI 기반 구축,    icon: "🤖", desc: 사내 AI 비서 및 자동화 신경망,     combos: [local-brain],                    duration: 1주 }
   - { step: 5, phase: 마케팅 & 홍보,   icon: "📢", desc: 콘텐츠 자동 생성과 발행,           combos: [content-factory, agent-crew],    duration: 상시 }
   - { step: 6, phase: 운영 & 정산,     icon: "💰", desc: 자동 회계 및 레거시 업무 대행,     combos: [ledger-bot, ghost-employee],     duration: 상시 }
+
+# ─────────────────────────────────────────────────────────────
+# models — 어떤 Claude 모델을 쓸지. 도구가 아니라 횡단 참조입니다.
+#
+#   숫자와 문구는 반드시 썩습니다. 갱신 절차는 MODELS-UPDATE.md.
+#   as_of 가 90일을 넘으면 build.py selftest 가 실패합니다.
+#   가격은 $/MTok (백만 토큰당). 문자열이 아니라 숫자여야 배수가 계산됩니다.
+# ─────────────────────────────────────────────────────────────
+models:
+  as_of: "2026-08-17"
+  source: https://platform.claude.com/docs/en/about-claude/models/choosing-a-model
+
+  principle:
+    text: >
+      모델을 갈아타기 전에 effort를 먼저 내리세요.
+      공식 권고는 "low와 medium을 토큰 비용·응답시간의 주 통제수단으로 아낌없이 쓰라 —
+      eval에서 품질이 유지되는 한"입니다. 모델 교체는 그 다음 수단입니다.
+    source: https://platform.claude.com/docs/en/build-with-claude/effort
+
+  catalog:
+    - id: claude-fable-5
+      name: Fable 5
+      price_in: 10
+      price_out: 50
+      context: 1M
+      use_for: 장시간 실행 에이전트, 깊은 추론, 장기 지평 에이전틱 작업
+
+    - id: claude-opus-5
+      name: Opus 5
+      price_in: 5
+      price_out: 25
+      context: 1M
+      use_for: 복잡한 에이전틱 코딩, 대규모 리팩터링, 복잡한 시스템 엔지니어링
+
+    - id: claude-sonnet-5
+      name: Sonnet 5
+      price_in: 2
+      price_out: 10
+      context: 1M
+      use_for: 코드 생성, 데이터 분석, 콘텐츠 제작, 에이전틱 도구 사용
+
+    - id: claude-haiku-4-5-20251001
+      name: Haiku 4.5
+      price_in: 1
+      price_out: 5
+      context: 200K
+      use_for: 실시간 응답, 대량 처리, 비용에 민감한 배포, 서브에이전트
+
+  warnings:
+    - text: >
+        멀티에이전트는 단일 채팅 대비 약 15배 토큰을 씁니다(단일 에이전트도 4배).
+        Anthropic 자신이 "여러 팀이 몇 달을 들여 정교한 멀티에이전트를 만들었다가
+        단일 에이전트의 프롬프트 개선만으로 동등한 결과를 얻었다"고 적었습니다. 값어치부터 따지세요.
+      source: https://www.anthropic.com/engineering/multi-agent-research-system
+
+    - text: >
+        Opus 5는 effort high(기본값)에서 시작하세요. 까다로운 코딩·에이전틱 작업에만 xhigh입니다.
+        Opus 4.7/4.8의 권고는 "xhigh에서 시작"이었고 Opus 5에서 바뀌었습니다 — 옛 설정을 그대로 쓰고 있다면 낮추세요.
+      source: https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5
+
+    - text: >
+        프롬프트 캐시 읽기는 기본 입력가의 0.1배입니다(5분 캐시 쓰기 1.25배, 1시간 2배).
+        같은 컨텍스트를 반복해서 보내고 있다면, 모델을 낮추는 것보다 캐싱이 먼저인 경우가 많습니다.
+      source: https://platform.claude.com/docs/en/about-claude/pricing
