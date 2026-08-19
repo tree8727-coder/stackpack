@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stackpack"
+version = "0.1.0"
+description = "사람들이 실제로 쓰는 코딩·바이브코딩 방법을 모아 내 규칙 파일에 얹어줍니다"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "달나루" }]
+keywords = ["claude-code", "antigravity", "agents-md", "vibe-coding", "ai-coding"]
+dependencies = ["pyyaml", "certifi"]
+
+[project.urls]
+Homepage = "https://github.com/tree8727-coder/stackpack"
+"방법 제출" = "https://github.com/tree8727-coder/stackpack/issues/new?template=사용법-제출.yml"
+
+[project.scripts]
+stackpack = "stackpack.vibe:main"
+
+# 저장소 뿌리의 파일을 휠 안에서만 패키지로 담습니다. 저장소는 그대로 둡니다 —
+# vibe.yaml 을 폴더 안으로 옮기면 고칠 자리가 헷갈립니다.
+# 여기 빠뜨리면 배포판이 vibe.yaml 없이 나갑니다. selftest 가 그걸 검사합니다.
+[tool.hatch.build.targets.wheel]
+only-include = ["pkg"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"pkg/__init__.py" = "stackpack/__init__.py"
+"vibe.py" = "stackpack/vibe.py"
+"vibe.yaml" = "stackpack/vibe.yaml"

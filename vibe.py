@@ -4,14 +4,14 @@
 # ///
 """vibe.py — vibe.yaml 하나에서 "내 프로젝트에 놓이는 파일"을 만듭니다.
 
-    uv run vibe.py list                  방법 목록
-    uv run vibe.py show 단언-부숴보기      방법 하나 자세히
-    uv run vibe.py apply all             지금 폴더에 적용 미리보기 (아무것도 안 바꿈)
-    uv run vibe.py apply all --yes       지금 폴더에 실제로 적용
-    uv run vibe.py apply all --global --yes   전역에 한 번만 — 모든 프로젝트에 자동 적용
-    uv run vibe.py where                 어느 도구의 어느 파일에 놓이는지
-    uv run vibe.py sync --yes            최신으로 당겨서 전역에 다시 얹기 (스케줄러용)
-    uv run vibe.py selftest              데이터 규율 + 안전장치 검사
+    {prog} list                  방법 목록
+    {prog} show 단언-부숴보기      방법 하나 자세히
+    {prog} apply all             지금 폴더에 적용 미리보기 (아무것도 안 바꿈)
+    {prog} apply all --yes       지금 폴더에 실제로 적용
+    {prog} apply all --global --yes   전역에 한 번만 — 모든 프로젝트에 자동 적용
+    {prog} where                 어느 도구의 어느 파일에 놓이는지
+    {prog} sync --yes            최신으로 당겨서 전역에 다시 얹기 (스케줄러용)
+    {prog} selftest              데이터 규율 + 안전장치 검사
 
 **아무것도 설치하지 않습니다.** 도구를 까는 건 build.py 쪽 일이고,
 여기는 파일만 놓습니다. 그래서 uv 말고는 필요한 게 없습니다.
@@ -27,6 +27,7 @@ Claude Code 와 Google Antigravity 를 함께 봅니다. 도구마다 읽는 파
 
 import argparse
 import difflib
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -103,6 +104,13 @@ def source():
 
 def load():
     return yaml.safe_load(source().read_text(encoding="utf-8"))
+
+
+def prog():
+    """이 프로그램을 부르는 이름. 저장소에서 돌리면 `uv run vibe.py`,
+    깔아서 쓰면 `stackpack` 입니다. 안내 문구가 없는 명령을 알려주면 안 됩니다."""
+    name = Path(sys.argv[0]).name
+    return "uv run vibe.py" if name.endswith(".py") else "stackpack"
 
 
 def validate(data):
@@ -241,7 +249,7 @@ def do_list(data):
         print(f"\n{key}  [{r['status']}]  {e['users']}명 · 최장 {e['longest']}")
         print(f"  {r['name']}")
         print(f"  단점: {r['cons']}")
-    print(f"\n{len(data['recipes'])}개. 자세히: uv run vibe.py show <키>")
+    print(f"\n{len(data['recipes'])}개. 자세히: {prog()} show <키>")
     return 0
 
 
@@ -419,6 +427,40 @@ def do_selftest(data):
     except AssertionError as e:
         assert "단점" in str(e), e
 
+    # 11-2. 안내 문구가 실행 이름을 박아두면 깔아 쓰는 사람에게 없는 명령을 알려주게 됩니다
+    src = Path(__file__).read_text(encoding="utf-8")
+    # prog() 안의 한 번(정의)만 허용합니다. 두 번째부터는 박아 넣은 것입니다.
+    # 찾는 문자열을 이어붙여 만듭니다 — 여기 그대로 적으면 이 검사 자신이 걸립니다.
+    needle = "uv run " + "vibe" + ".py"
+    쓰인수 = src.count(needle)
+    assert 쓰인수 == 2, f"실행 이름이 {쓰인수}번 나옵니다 (정의 2줄만 허용) — prog() 를 쓰세요"
+
+    # 12. 배포 설정 — 여기가 어긋나면 남한테는 깨진 채로 나갑니다
+    pyproject = ROOT / "pyproject.toml"
+    if pyproject.exists():          # 배포판 안에는 없습니다
+        import tomllib
+        cfg = tomllib.load(pyproject.open("rb"))
+
+        # 12-1. 휠에 vibe.yaml 이 안 담기면 배포판은 첫 실행부터 죽습니다
+        inc = cfg["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+        for 필수 in ("vibe.py", "vibe.yaml"):
+            assert 필수 in inc, f"휠에 {필수} 가 안 담깁니다 (force-include)"
+        assert inc["vibe.yaml"].rsplit("/", 1)[0] == inc["vibe.py"].rsplit("/", 1)[0], \
+            "vibe.yaml 이 vibe.py 옆에 안 담깁니다 — ROOT 로 못 찾습니다"
+
+        # 12-2. 의존성이 두 곳에 적혀 있습니다(스크립트 헤더 · pyproject).
+        #       복붙된 두 벌은 반드시 갈라집니다. 여기서 대조합니다.
+        src = Path(__file__).read_text(encoding="utf-8")
+        header = re.search(r'# dependencies = \[(.*?)\]', src).group(1)
+        헤더deps = sorted(x.strip().strip('"\'') for x in header.split(","))
+        assert 헤더deps == sorted(cfg["project"]["dependencies"]), \
+            f"의존성이 갈라졌습니다: 헤더 {헤더deps} vs pyproject {cfg['project']['dependencies']}"
+
+        # 12-3. 진입점이 실제로 있는 함수를 가리키는지
+        ep = cfg["project"]["scripts"]["stackpack"]
+        mod, fn = ep.split(":")
+        assert mod.endswith(".vibe") and fn in globals(), f"진입점이 이상합니다: {ep}"
+
     검증됨 = sum(1 for r in recipes.values() if r["status"] == "검증됨")
     도구 = ", ".join(s["name"] for s in data["surfaces"].values())
     print(f"\n통과. 방법 {len(recipes)}개 (검증됨 {검증됨}) · 도구 {도구} · 확인 {age}일 전")
@@ -426,7 +468,8 @@ def do_selftest(data):
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__.replace("{prog}", prog()),
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="방법 목록")
     sub.add_parser("where", help="어느 도구의 어느 파일에 놓이는지")
