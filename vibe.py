@@ -200,6 +200,29 @@ def 해당되는_사고(data, root):
     return 고른것 or data["incidents"]     # 하나도 안 걸리면 전부 넣습니다
 
 
+def 내_기록(data):
+    """이 컴퓨터에서 어떤 사고가 몇 번 걸렸나. **여기서 밖으로 안 나갑니다.**
+
+    집단 학습(전체에서 자주 걸리는 것)은 서버가 있어야 합니다.
+    개인 적응(내가 자주 걸리는 것)은 서버 없이 지금 됩니다 — 그리고 이쪽이
+    더 정확합니다. 남이 자주 겪는 것보다 **내가 자주 겪는 것**이 먼저입니다.
+    """
+    센것 = {}
+    if not BLOCK_LOG.exists():
+        return 센것
+    번호 = {i["id"]: k for k, i in data["incidents"].items()}
+    try:
+        for line in BLOCK_LOG.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            사고 = json.loads(line).get("사고")
+            if 키 := 번호.get(사고):
+                센것[키] = 센것.get(키, 0) + 1
+    except (OSError, json.JSONDecodeError):
+        pass
+    return 센것
+
+
 def index_block(data, 고른것=None):
     """규칙 파일에는 **색인만** 넣습니다.
 
@@ -210,7 +233,12 @@ def index_block(data, 고른것=None):
     줄 = ["## 남이 이미 당한 사고 — 같은 걸 두 번 하지 않는다", ""]
     줄.append("아래 상황이 오면 **멈추고 해당 항목을 확인한다.** 전문은 `오답노트` 스킬에 있다.")
     줄.append("")
-    줄 += [index_line(i) for i in (고른것 or data["incidents"]).values()]
+    쓸것 = 고른것 or data["incidents"]
+    센것 = 내_기록(data)
+    # 이 컴퓨터에서 실제로 걸린 것을 위로. 안 걸린 것은 원래 순서 그대로.
+    차례 = sorted(쓸것.items(), key=lambda kv: -센것.get(kv[0], 0))
+    줄 += [index_line(i) + (f"  ← 여기서 {센것[k]}번 걸림" if 센것.get(k) else "")
+          for k, i in 차례]
     줄 += ["", f"전문 보기: `stackpack 보기 <항목>` · 내 프로젝트 점검: `stackpack 검사`"]
     return "\n".join(줄)
 
@@ -1232,6 +1260,16 @@ def do_selftest(data):
         f"색인이 {len(색인.splitlines())}줄입니다 — 전문이 새어 들어갔습니다"
     for 표 in ("실제로 있었던 일", "이렇게 해도 안 잡히는 것"):
         assert 표 not in 색인, f"색인에 전문({표})이 들어갔습니다"
+
+    # 11-4f. 순서를 바꾸다가 사고를 **빠뜨리면 안 됩니다.** 개인 적응이 카탈로그를
+    #        조용히 줄이는 순간, 그건 개선이 아니라 손실입니다.
+    가짜기록 = {"E8": 5, "E13": 2}
+    번호맵 = {i["id"]: k for k, i in incidents.items()}
+    for 아이디 in 가짜기록:
+        assert 아이디 in 번호맵, f"검사가 없는 사고 번호를 씁니다: {아이디}"
+    색인줄 = [l for l in index_block(data).splitlines() if l.startswith("- **[")]
+    assert len(색인줄) == len(incidents), \
+        f"색인에 {len(색인줄)}건뿐입니다 — 순서를 바꾸다 {len(incidents) - len(색인줄)}건을 빠뜨렸습니다"
 
     # 11-4c. 프로젝트 감지는 **파일 이름만** 봅니다. 내용을 읽으면 안 됩니다.
     import inspect as _ins
