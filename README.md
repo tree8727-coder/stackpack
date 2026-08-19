@@ -61,11 +61,15 @@ uv run vibe.py apply all --global --yes --only claude-code   # 한 도구만
 **계속 최신으로 두려면** — 사람들이 낸 방법이 늘어도 손댈 일이 없게:
 
 ```powershell
-uv run vibe.py sync --yes        # 저장소를 당겨서 전역에 다시 얹음
+uv run vibe.py sync --yes        # 최신 방법을 받아서 전역에 다시 얹음
 ```
 
 이 한 줄을 스케줄러에 걸어 두면 됩니다
 (윈도우: 작업 스케줄러 / 맥: `launchd` · `cron`).
+
+저장소 안에서 돌리면 `git pull`, 배포판(저장소 없음)에서는 깃허브에서 `vibe.yaml` 만
+받아 `~/.stackpack/` 에 둡니다. **받은 파일은 검사를 통과해야 저장됩니다** — 남의
+서버에서 받은 걸 검사 없이 내 전역 설정에 얹지 않습니다.
 
 **이 프로젝트에만** 넣고 싶으면 `--global` 을 빼면 됩니다.
 

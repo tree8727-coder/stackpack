@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "certifi"]
 # ///
 """vibe.py — vibe.yaml 하나에서 "내 프로젝트에 놓이는 파일"을 만듭니다.
 
@@ -36,6 +36,11 @@ import yaml
 ROOT = Path(__file__).parent
 VIBE = ROOT / "vibe.yaml"
 
+# 배포판(uvx·pip)에는 저장소가 없습니다. git pull 로는 갱신할 수 없어서
+# sync 는 깃허브에서 vibe.yaml 만 직접 받아 여기 둡니다.
+REMOTE = "https://raw.githubusercontent.com/tree8727-coder/stackpack/main/vibe.yaml"
+CACHE = Path.home() / ".stackpack" / "vibe.yaml"
+
 # 도구마다 "모든 프로젝트에서 자동으로 읽는 파일"이 따로 있습니다. 경로는 vibe.yaml 의
 # surfaces 에 있고 여기서 해석만 합니다 — 경로를 두 곳에 적으면 반드시 갈라집니다.
 #
@@ -63,8 +68,59 @@ STALE_DAYS = 180
 금지어 = ("최적", "베스트", "정답")
 
 
+def fetch(url):
+    """https 로 받아옵니다.
+
+    파이썬이 시스템 인증서를 못 찾는 설치본이 실제로 있습니다(맥 공식 설치본에서
+    "Install Certificates.command" 를 안 돌린 경우). 배포할 프로그램이 거기서
+    죽으면 안 되므로, 기본 검증이 실패하면 certifi 묶음으로 한 번 더 시도합니다.
+    **검증을 끄지는 않습니다** — 끄면 받은 파일을 믿을 근거가 사라집니다.
+    """
+    import ssl
+    import urllib.request
+
+    try:
+        return urllib.request.urlopen(url, timeout=20).read().decode("utf-8")
+    except urllib.error.URLError as e:
+        if not isinstance(getattr(e, "reason", None), ssl.SSLError):
+            raise
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        return urllib.request.urlopen(url, timeout=20, context=ctx).read().decode("utf-8")
+
+
+def source():
+    """어느 vibe.yaml 을 쓸지.
+
+    저장소 안에서 돌리는 중이면 **항상 저장소 것**입니다. 여기서 캐시를 먼저 보면
+    vibe.yaml 을 고쳐도 반영이 안 돼서, 고친 사람이 한참을 헤매게 됩니다.
+    배포판(저장소 없음)에서만 sync 로 받아 둔 캐시를 씁니다.
+    """
+    if (ROOT / ".git").exists():
+        return VIBE
+    return CACHE if CACHE.exists() else VIBE
+
+
 def load():
-    return yaml.safe_load(VIBE.read_text(encoding="utf-8"))
+    return yaml.safe_load(source().read_text(encoding="utf-8"))
+
+
+def validate(data):
+    """받아온 데이터가 규율을 지키는지. **적용하기 전에** 봅니다.
+
+    남의 서버에서 받은 파일을 검사 없이 내 전역 설정에 얹으면 안 됩니다.
+    selftest 가 쓰는 것과 같은 검사입니다 — 두 벌로 만들지 않았습니다.
+    """
+    assert data.get("surfaces"), "surfaces 가 없습니다"
+    for k, r in data.get("recipes", {}).items():
+        assert r.get("cons", "").strip(), f"{k}: 단점(cons)이 비었습니다"
+        assert r.get("status") in data["statuses"], f"{k}: 모르는 status"
+        e = r.get("evidence") or {}
+        assert e.get("users", 0) >= 1 and e.get("sources"), f"{k}: 근거가 없습니다"
+        for f in r.get("files", []):
+            assert f.get("to") == "rules", f"{k}: 모르는 to '{f.get('to')}'"
+            assert f.get("mode") in ("create", "append"), f"{k}: 모르는 mode"
+    return data
 
 
 def marker(key):
@@ -224,15 +280,36 @@ def do_sync(execute=False):
     스케줄러에 걸어 두는 건 이것 하나면 됩니다.
     """
     import subprocess
+    import urllib.request
 
-    r = subprocess.run(["git", "-C", str(ROOT), "pull", "--ff-only"],
-                       capture_output=True, text=True)
-    print((r.stdout or r.stderr).strip())
-    if r.returncode != 0:
-        print("\n당기지 못했습니다. 손으로 고쳐 둔 게 있으면 먼저 정리하세요.")
-        return 1
+    if (ROOT / ".git").exists():
+        # 개발 중 — 저장소를 그대로 씁니다
+        r = subprocess.run(["git", "-C", str(ROOT), "pull", "--ff-only"],
+                           capture_output=True, text=True)
+        print((r.stdout or r.stderr).strip())
+        if r.returncode != 0:
+            print("\n당기지 못했습니다. 손으로 고쳐 둔 게 있으면 먼저 정리하세요.")
+            return 1
+    else:
+        # 배포판 — 깃이 없습니다. vibe.yaml 만 받아옵니다.
+        assert REMOTE.startswith("https://"), "평문 http 로는 받지 않습니다"
+        print(f"받는 중 … {REMOTE}")
+        try:
+            raw = fetch(REMOTE)
+        except Exception as e:
+            print(f"받지 못했습니다: {e}\n지금 있는 것으로 그대로 둡니다.")
+            return 1
+        # **검사를 통과한 것만** 저장합니다. 받은 걸 바로 얹으면 남의 파일을 믿는 셈입니다.
+        try:
+            validate(yaml.safe_load(raw))
+        except AssertionError as e:
+            print(f"받은 파일이 규율을 어깁니다: {e}\n적용하지 않습니다.")
+            return 1
+        CACHE.parent.mkdir(parents=True, exist_ok=True)
+        CACHE.write_text(raw, encoding="utf-8")
+        print(f"받았습니다 → {CACHE}")
 
-    data = load()   # 당긴 뒤에 다시 읽습니다 — 안 그러면 옛 방법을 얹습니다
+    data = load()   # 갱신 뒤에 다시 읽습니다 — 안 그러면 옛 방법을 얹습니다
     print()
     for _, name, path in surface_paths(data, "global", ROOT):
         print(f"{name}  →  {path}")
@@ -320,6 +397,27 @@ def do_selftest(data):
     # 10. 도구마다 각자의 파일에 들어간다 — 한 도구만 받고 끝나면 안 됩니다
     tmp_names = {p.name for _, _, p in surface_paths(data, "project", Path("/tmp"))}
     assert len(tmp_names) == len(data["surfaces"]), "도구 둘이 같은 파일을 가리킵니다"
+
+    # 10-2. 저장소 안에서는 캐시가 아니라 저장소 파일을 읽어야 한다
+    assert (ROOT / ".git").exists(), "이 검사는 저장소 안에서 돌려야 합니다"
+    assert source() == VIBE, f"저장소 안인데 {source()} 를 읽고 있습니다"
+
+    # 11. 배포판 갱신 경로 — 평문 http 금지, 캐시가 홈 밑, validate 가 실제로 잡는지
+    assert REMOTE.startswith("https://"), "REMOTE 가 https 가 아닙니다"
+    assert Path.home() in CACHE.parents, f"캐시가 홈 밖입니다: {CACHE}"
+    # 인증서 검증을 끄는 코드가 슬며시 들어오는 걸 막습니다
+    src = Path(__file__).read_text(encoding="utf-8")
+    for 금지 in ("_create_unverified_context", "CERT_NONE", "verify=False"):
+        assert 금지 not in src.replace(f'"{금지}"', ""), f"인증서 검증을 끄는 코드: {금지}"
+    validate(data)
+    나쁜것 = {"statuses": data["statuses"], "surfaces": data["surfaces"],
+             "recipes": {"x": {"cons": "", "status": "검증됨",
+                               "evidence": {"users": 1, "sources": ["#1"]}}}}
+    try:
+        validate(나쁜것)
+        raise AssertionError("validate 가 단점 빈 방법을 통과시켰습니다")
+    except AssertionError as e:
+        assert "단점" in str(e), e
 
     검증됨 = sum(1 for r in recipes.values() if r["status"] == "검증됨")
     도구 = ", ".join(s["name"] for s in data["surfaces"].values())
