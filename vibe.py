@@ -6,8 +6,9 @@
 
     uv run vibe.py list                  방법 목록
     uv run vibe.py show 단언-부숴보기      방법 하나 자세히
-    uv run vibe.py apply all             적용 미리보기 (아무것도 안 바꿈)
-    uv run vibe.py apply all --yes       실제로 적용
+    uv run vibe.py apply all             지금 폴더에 적용 미리보기 (아무것도 안 바꿈)
+    uv run vibe.py apply all --yes       지금 폴더에 실제로 적용
+    uv run vibe.py apply all --global --yes   ~/.claude/ 에 한 번만 — 모든 프로젝트에 자동 적용
     uv run vibe.py selftest              데이터 규율 + 안전장치 검사
 
 **아무것도 설치하지 않습니다.** 도구를 까는 건 build.py 쪽 일이고,
@@ -29,6 +30,11 @@ import yaml
 
 ROOT = Path(__file__).parent
 VIBE = ROOT / "vibe.yaml"
+
+# Claude Code 가 **모든 프로젝트에서 자동으로 읽는** 파일이 여기 있습니다.
+# --global 은 프로젝트 폴더 대신 여기에 놓습니다 — 한 번 넣으면 프로젝트마다
+# 다시 칠 필요가 없습니다. 그래서 위험도 큽니다: 여기 쓴 건 전부에 영향을 줍니다.
+GLOBAL = Path.home() / ".claude"
 
 # 사람이 확인한 날짜가 이만큼 지나면 selftest 가 일부러 실패합니다.
 # (build.py 의 모델 가격표 90일 장치와 같은 이유 — 오래된 데이터가 조용히 사는 걸 막습니다)
@@ -215,6 +221,10 @@ def do_selftest(data):
         do_apply(data, ["all"], tmp, execute=True)
         assert "건드리지 마" in (tmp / "CLAUDE.md").read_text(encoding="utf-8"), "남의 내용이 사라졌습니다"
 
+    # 8. --global 이 가리키는 곳이 정말 홈 밑인지 (여기를 잘못 잡으면 남의 설정을 건드립니다)
+    assert GLOBAL == Path.home() / ".claude", f"전역 경로가 이상합니다: {GLOBAL}"
+    assert ROOT not in GLOBAL.parents and GLOBAL != ROOT, "전역 경로가 저장소 안을 가리킵니다"
+
     검증됨 = sum(1 for r in recipes.values() if r["status"] == "검증됨")
     print(f"\n통과. 방법 {len(recipes)}개 (검증됨 {검증됨}) · 확인 {age}일 전")
     return 0
@@ -231,6 +241,8 @@ def main():
     pa.add_argument("targets", nargs="+", help="방법 키 / all (all = 검증됨 전부)")
     pa.add_argument("--yes", action="store_true", help="실제로 적용 (없으면 미리보기)")
     pa.add_argument("--dir", default=".", help="적용할 폴더 (기본: 지금 폴더)")
+    pa.add_argument("--global", dest="glob", action="store_true",
+                    help="~/.claude/ 에 놓아 모든 프로젝트에 자동 적용 (--dir 대신)")
     a = p.parse_args()
 
     data = load()
@@ -241,6 +253,10 @@ def main():
             return do_show(data, a.key)
         if a.cmd == "selftest":
             return do_selftest(data)
+        if a.glob:
+            GLOBAL.mkdir(parents=True, exist_ok=True)
+            print(f"전역 적용 → {GLOBAL}/  (모든 프로젝트에 자동으로 읽힙니다)\n")
+            return do_apply(data, a.targets, GLOBAL, execute=a.yes)
         return do_apply(data, a.targets, Path(a.dir).resolve(), execute=a.yes)
     except KeyError as k:
         print(f"모르는 키: {k}\n있는 것: {', '.join(data['recipes'])}")

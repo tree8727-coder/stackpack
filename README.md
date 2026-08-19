@@ -38,11 +38,25 @@ stack.yaml  ←  유일한 진실. 손으로만 편집.
 `vibe` 는 **아무것도 설치하지 않습니다.** 도구를 안 깔아도 됩니다.
 사람들이 실제로 쓰는 방법을 `CLAUDE.md` 같은 파일로 내 프로젝트에 얹어줄 뿐입니다.
 
+**한 번만 깔고 끝내려면** (권장) — `~/.claude/CLAUDE.md` 는 Claude Code 가 **모든
+프로젝트에서 자동으로 읽는** 파일입니다. 여기 넣으면 프로젝트마다 다시 칠 일이 없습니다.
+
+```powershell
+uv run vibe.py apply all --global            # 뭐가 들어가는지 먼저 보여줌
+uv run vibe.py apply all --global --yes      # 넣기. 이후 모든 프로젝트에 자동 적용
+```
+
+**이 프로젝트에만** 넣고 싶으면 `--global` 을 빼면 됩니다.
+
 ```powershell
 uv run vibe.py list                 # 어떤 방법들이 있나
+uv run vibe.py show 단언-부숴보기     # 하나 자세히
 uv run vibe.py apply all            # 뭐가 바뀌는지 먼저 보여줌 (아무것도 안 바꿈)
 uv run vibe.py apply all --yes      # 실제로 적용 (.bak 남김)
 ```
+
+되돌리려면 `CLAUDE.md` 에서 `<!-- vibe:키 -->` 로 시작하는 블록을 지우거나,
+옆에 남은 `CLAUDE.md.bak` 으로 되돌리면 됩니다.
 
 기존 파일은 **절대 덮어쓰지 않습니다.** 이미 있으면 건너뛰고, 덧붙일 때는 표식을 남겨
 두 번 돌려도 안 늘어납니다. 이건 `uv run vibe.py selftest` 가 매번 실제로 확인합니다.
