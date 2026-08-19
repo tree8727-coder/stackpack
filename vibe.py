@@ -438,6 +438,56 @@ def undo(data, root, scope="global", execute=False):
     return 0
 
 
+def do_tidy(data, execute=False):
+    """끝 표시가 없던 시절의 낡은 블록을 빼냅니다.
+
+    시작 표시밖에 없어서 **경계를 확실히 알 수 없습니다.** 그래서 자동으로 지우지
+    않습니다. 뺄 내용을 글자 그대로 보여주고, 사람이 보고 나서 빼게 합니다.
+    추측해서 지우면 그 사이에 사람이 써 넣은 글이 같이 사라집니다.
+    """
+    찾음 = 0
+    for _, name, path in surface_paths(data, "global", ROOT):
+        if not path.exists():
+            continue
+        글 = path.read_text(encoding="utf-8")
+        while True:
+            i = 글.find("<!-- vibe:")
+            if i < 0:
+                break
+            키끝 = 글.find(" -->", i)
+            키 = 글[i + 10:키끝]
+            if end_marker(키) in 글:      # 새 형식은 알아서 처리됩니다
+                남은 = 글[키끝:]
+                다음 = 남은.find("<!-- vibe:")
+                if 다음 < 0:
+                    break
+                글 = 남은[다음:]
+                continue
+            뒤 = 글.find("<!-- vibe:", i + 1)
+            블록 = 글[i:] if 뒤 < 0 else 글[i:뒤]
+            찾음 += 1
+            print(f"\n{name} — 낡은 항목 「{키}」")
+            print("─" * 50)
+            for l in 블록.rstrip().splitlines():
+                print("  " + l)
+            print("─" * 50)
+            if execute:
+                원본 = path.read_text(encoding="utf-8")
+                path.with_suffix(path.suffix + ".bak").write_text(원본, encoding="utf-8")
+                path.write_text(원본.replace(블록, ""), encoding="utf-8")
+                print("  뺐습니다.")
+            글 = 글[i + len(블록):]
+    print()
+    if not 찾음:
+        print("낡은 항목이 없습니다. 깨끗합니다.")
+    elif execute:
+        print(f"{찾음}개를 뺐습니다. 원본은 .bak 에 있습니다.")
+    else:
+        print(f"낡은 항목 {찾음}개를 찾았습니다. 위 내용이 그대로 빠집니다.")
+        print(f"빼려면: {prog()} 정리 --진짜")
+    return 0
+
+
 def do_auto(data, execute=True):
     """아무것도 안 붙이고 그냥 실행했을 때. 이게 기본 동작입니다."""
     쓰는것 = detected(data)
@@ -1022,6 +1072,7 @@ def do_selftest(data):
     "검사": "check", "점검": "check",
     "관문": "hook", "차단": "hook",
     "성적표": "report", "기록": "report",
+    "정리": "tidy",
 }
 
 
@@ -1059,6 +1110,8 @@ def main():
     ph = sub.add_parser("hook", help="관문 켜기/끄기")
     ph.add_argument("onoff", nargs="?", default="상태")
     sub.add_parser("report", help="지금까지 몇 번 막았나")
+    pt = sub.add_parser("tidy", help="낡은 형식 항목 빼기")
+    pt.add_argument("--yes", action="store_true")
     sub.add_parser("guard", help="(훅이 부르는 것)")
     pau = sub.add_parser("auto", help="자동 갱신 켜기/끄기")
     pau.add_argument("onoff", nargs="?", default="상태", help="켜기 / 끄기")
@@ -1105,6 +1158,8 @@ def main():
             return do_hook_cmd(a.onoff)
         if a.cmd == "report":
             return do_report(data)
+        if a.cmd == "tidy":
+            return do_tidy(data, execute=a.yes)
         if a.only and a.only not in data["surfaces"]:
             raise KeyError(a.only)
         scope = "global" if a.glob else "project"
