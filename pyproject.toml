@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "stackpack"
 version = "0.1.0"
-description = "사람들이 실제로 쓰는 코딩·바이브코딩 방법을 모아 내 규칙 파일에 얹어줍니다"
+description = "내 AI가 사고 치기 전에 막는 관문 — 남이 이미 당한 사고 13건으로 만든 오답노트"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "달나루" }]
-keywords = ["claude-code", "antigravity", "agents-md", "vibe-coding", "ai-coding"]
+keywords = ["claude-code", "antigravity", "agents-md", "ai-guardrails", "ai-governance", "secret-scanning", "vibe-coding"]
 dependencies = ["pyyaml", "certifi"]
 
 [project.urls]
@@ -31,4 +31,5 @@ only-include = ["pkg"]
 "vibe.py" = "stackpack/vibe.py"
 "vibe.yaml" = "stackpack/vibe.yaml"
 "check.py" = "stackpack/check.py"
+"guard.py" = "stackpack/guard.py"
 "ERRORS.md" = "stackpack/ERRORS.md"

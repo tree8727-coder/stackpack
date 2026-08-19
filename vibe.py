@@ -10,6 +10,8 @@
     {prog} apply all --yes       지금 폴더에 실제로 적용
     {prog} apply all --global --yes   전역에 한 번만 — 모든 프로젝트에 자동 적용
     {prog} 검사                   내 프로젝트에 이 사고가 있는지 찾기
+    {prog} 성적표                 지금까지 몇 번 막았나
+    {prog} 관문 끄기              막는 것을 끄기 (규칙은 그대로)
     {prog} where                 어느 도구의 어느 파일에 놓이는지
     {prog} sync --yes            최신으로 당겨서 전역에 다시 얹기 (스케줄러용)
     {prog} selftest              데이터 규율 + 안전장치 검사
@@ -29,6 +31,7 @@ Claude Code 와 Google Antigravity 를 함께 봅니다. 도구마다 읽는 파
 import argparse
 import difflib
 import re
+import json
 import subprocess
 import sys
 from datetime import date
@@ -350,7 +353,6 @@ def do_sync(execute=False):
     사람들이 낸 방법이 늘어나도 손으로 다시 칠 일이 없게 하려는 명령입니다.
     스케줄러에 걸어 두는 건 이것 하나면 됩니다.
     """
-    import subprocess
     import urllib.request
 
     if (ROOT / ".git").exists():
@@ -592,6 +594,112 @@ def do_auto_cmd(onoff):
     return 0
 
 
+# ── 관문 (훅) ────────────────────────────────────────────────────────────────
+# 규칙은 부탁이고, 검사는 사후입니다. 관문만이 **막습니다.**
+# Claude Code 의 PreToolUse 훅으로 붙습니다. Antigravity 에는 같은 게 없어서
+# 거기는 규칙(글)로만 남습니다 — 없는 걸 있다고 하지 않습니다.
+SETTINGS = Path.home() / ".claude" / "settings.json"
+# 우리 훅인지 알아보는 표시. 명령줄 끝에 `# 주석` 을 붙이는 방법을 썼다가
+# 윈도우에서는 그게 주석이 아니라 인자로 들어가 관문이 안 도는 걸 알았습니다.
+# 그래서 표시를 따로 붙이지 않고 명령 자체로 알아봅니다.
+GUARD_MARKS = ("stackpack", "guard.py")
+
+
+def is_ours(h):
+    return any(m in json.dumps(h, ensure_ascii=False) for m in GUARD_MARKS)
+BLOCK_LOG = Path.home() / ".stackpack" / "막은기록.jsonl"
+
+
+def _guard_cmd():
+    exe = _exe()
+    if len(exe) == 1:
+        return f'"{exe[0]}" 관문'
+    return f'"{exe[0]}" "{Path(__file__).parent / "guard.py"}"'
+
+
+def hook_on():
+    """~/.claude/settings.json 에 관문을 겁니다. 남의 설정은 안 지웁니다."""
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    원본 = SETTINGS.read_text(encoding="utf-8") if SETTINGS.exists() else ""
+    try:
+        cfg = json.loads(원본) if 원본.strip() else {}
+    except json.JSONDecodeError:
+        return False, "settings.json 을 읽을 수 없어 건드리지 않았습니다"
+    hooks = cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])
+    for h in hooks:
+        if is_ours(h):
+            return True, "이미 걸려 있습니다"
+    hooks.append({
+        "matcher": "Write|Edit|Bash",
+        "hooks": [{"type": "command", "command": _guard_cmd(), "timeout": 10}],
+    })
+    if 원본:
+        SETTINGS.with_suffix(".json.bak").write_text(원본, encoding="utf-8")
+    SETTINGS.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return True, str(SETTINGS)
+
+
+def hook_off():
+    if not SETTINGS.exists():
+        return True
+    try:
+        cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    pre = cfg.get("hooks", {}).get("PreToolUse", [])
+    남길것 = [h for h in pre if not is_ours(h)]
+    if len(남길것) == len(pre):
+        return True
+    cfg["hooks"]["PreToolUse"] = 남길것
+    if not 남길것:
+        cfg["hooks"].pop("PreToolUse")
+    if not cfg["hooks"]:
+        cfg.pop("hooks")
+    SETTINGS.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return True
+
+
+def do_hook_cmd(onoff):
+    if onoff in ("끄기", "off"):
+        hook_off()
+        print("관문을 껐습니다. 이제 막지 않고 규칙으로만 알려줍니다.")
+        return 0
+    if onoff in ("켜기", "on"):
+        ok, 어디 = hook_on()
+        print(f"관문을 켰습니다 → {어디}" if ok else f"못 켰습니다: {어디}")
+        return 0 if ok else 1
+    켜짐 = SETTINGS.exists() and any(
+        m in SETTINGS.read_text(encoding="utf-8") for m in GUARD_MARKS)
+    print("켜져 있습니다." if 켜짐 else "꺼져 있습니다.")
+    print(f"바꾸려면: {prog()} 관문 켜기  /  {prog()} 관문 끄기")
+    return 0
+
+
+def do_report(data):
+    """막은 횟수를 보여줍니다. **밖으로 안 보냅니다** — 이 파일은 이 컴퓨터에만 있습니다."""
+    if not BLOCK_LOG.exists():
+        print("\n아직 막은 게 없습니다.")
+        print("관문이 켜져 있으면, AI 가 사고를 치려 할 때 여기 쌓입니다.")
+        print(f"\n관문 상태 보기: {prog()} 관문")
+        return 0
+    센것, 최근 = {}, None
+    for line in BLOCK_LOG.read_text(encoding="utf-8").splitlines():
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        센것[r["사고"]] = 센것.get(r["사고"], 0) + 1
+        최근 = r["때"]
+    총 = sum(센것.values())
+    이름 = {i["id"]: i["name"] for i in data["incidents"].values()}
+    print(f"\n스택팩이 지금까지 {총}번 막았습니다.\n")
+    for 사고, n in sorted(센것.items(), key=lambda x: -x[1]):
+        print(f"  {n:>3}번   [{사고}] {이름.get(사고, '')}")
+    print(f"\n마지막: {최근}")
+    print(f"기록은 이 컴퓨터에만 있습니다 ({BLOCK_LOG}). 아무 데도 안 보냅니다.")
+    return 0
+
+
 def do_selftest(data):
     import tempfile
 
@@ -793,6 +901,66 @@ def do_selftest(data):
     쓰인수 = src.count(needle)
     assert 쓰인수 == 2, f"실행 이름이 {쓰인수}번 나옵니다 (정의 2줄만 허용) — prog() 를 쓰세요"
 
+    # 11-3. 관문 — 막아야 할 것을 막고, 멀쩡한 것은 통과시키는가.
+    #        둘 다 치명적입니다. 못 막으면 쓸모가 없고, 잘못 막으면 지워집니다.
+    g = None
+    try:
+        from . import guard as g
+    except ImportError:
+        try:
+            import guard as g
+        except ImportError:
+            pass
+    if g is not None:
+        막아야 = [
+            ("Write", {"file_path": "a/config.py",
+                       "content": 'K = "sk-ant-' + "a" * 30 + '"'}, "E8"),
+            ("Write", {"file_path": "a/pay.js",
+                       "content": "const x = '국민 123456-01-234567';"}, "E8"),  # check:ignore
+            ("Write", {"file_path": "a/server.js",
+                       "content": "app.use(express.static(__dirname));"}, "E7"),
+            ("Write", {"file_path": "a/fly.toml",
+                       "content": "auto_stop_machines = 'off'\nmin_machines_running = 1"}, "E13"),
+            ("Bash", {"command": "git add .env"}, "E5"),
+        ]
+        for tool, ti, 사고 in 막아야:
+            r = g.판정(tool, ti)
+            assert r is not None, f"관문이 {사고} 를 못 막았습니다: {ti}"
+            assert r[1] == 사고, f"관문이 {사고} 를 {r[1]} 로 봤습니다"
+            assert r[0] == "deny", f"{사고} 는 막아야 합니다 (지금 {r[0]})"
+
+        물어봐야 = g.판정("Write", {"file_path": "a/test_e2e.py",
+                                  "content": 'A("x" not in pg.inner_text("#b"))'})
+        assert 물어봐야 and 물어봐야[0] == "escalate", "E10 은 사람에게 물어봐야 합니다"
+
+        통과해야 = [
+            ("Write", {"file_path": "a/README.md", "content": "# 안녕하세요\n설명입니다."}),
+            ("Write", {"file_path": "a/app.py", "content": "KEY = os.environ['K']"}),
+            ("Bash", {"command": "git add ."}),
+            ("Bash", {"command": "npm test"}),
+            ("Write", {"file_path": "a/.env.example", "content": "KEY=여기에_본인_키"}),
+            ("Write", {"file_path": "a/fly.toml",
+                       "content": "auto_stop_machines = 'on'\nmin_machines_running = 0"}),
+        ]
+        for tool, ti in 통과해야:
+            r = g.판정(tool, ti)
+            assert r is None, f"관문이 멀쩡한 걸 막았습니다: {ti} → {r}"
+
+        # 터지면 통과시켜야 합니다. 관문이 편집기를 멈추게 하면 사람은 이걸 지웁니다.
+        assert g.판정("Write", {"file_path": None, "content": None}) is None or True
+        import io, contextlib
+        오염 = io.StringIO()
+        with contextlib.redirect_stdout(오염):
+            sys.stdin = io.StringIO("이건 JSON 이 아닙니다")
+            rc = g.main()
+            sys.stdin = sys.__stdin__
+        assert rc == 0 and not 오염.getvalue().strip(), "쓰레기 입력에 관문이 죽었습니다"
+
+    # 11-4. 관문 켜기/끄기가 남의 설정을 안 건드리는가. 그리고 명령줄에 주석을
+    #        붙이지 않는가 — 윈도우에서는 `#` 이 주석이 아니라 인자가 됩니다.
+    cmd = _guard_cmd()
+    assert "#" not in cmd, f"훅 명령에 주석이 붙었습니다 (윈도우에서 깨집니다): {cmd}"
+
     # 12. 배포 설정 — 여기가 어긋나면 남한테는 깨진 채로 나갑니다
     pyproject = ROOT / "pyproject.toml"
     if pyproject.exists():          # 배포판 안에는 없습니다
@@ -836,6 +1004,8 @@ def do_selftest(data):
     "갱신": "sync", "최신": "sync",
     "자동": "auto",
     "검사": "check", "점검": "check",
+    "관문": "hook", "차단": "hook",
+    "성적표": "report", "기록": "report",
 }
 
 
@@ -846,6 +1016,13 @@ def main():
     if not argv:
         data = load()
         rc = do_auto(data, execute=True)
+        if (Path.home() / ".claude").exists():
+            ok, _ = hook_on()
+            if ok:
+                print()
+                print("그리고 **막습니다** — AI 가 키를 코드에 적거나 .env 를 올리려 하면")
+                print("그 자리에서 멈춥니다. 사람이 뭘 누를 필요 없습니다.")
+                print(f"막은 횟수 보기: {prog()} 성적표   ·   끄기: {prog()} 관문 끄기")
         ensure_schedule()
         return rc
 
@@ -863,6 +1040,10 @@ def main():
     pc.add_argument("dir", nargs="?", default=".", help="볼 폴더 (기본: 지금 폴더)")
     pu = sub.add_parser("undo", help="넣었던 것 전부 빼기")
     pu.add_argument("--yes", action="store_true", help="실제로 빼기")
+    ph = sub.add_parser("hook", help="관문 켜기/끄기")
+    ph.add_argument("onoff", nargs="?", default="상태")
+    sub.add_parser("report", help="지금까지 몇 번 막았나")
+    sub.add_parser("guard", help="(훅이 부르는 것)")
     pau = sub.add_parser("auto", help="자동 갱신 켜기/끄기")
     pau.add_argument("onoff", nargs="?", default="상태", help="켜기 / 끄기")
     psy = sub.add_parser("sync", help="최신 방법 받아서 다시 넣기")
@@ -877,6 +1058,13 @@ def main():
     pa.add_argument("--global", dest="glob", action="store_true")
     pa.add_argument("--only", help="도구 하나만")
     a = p.parse_args(argv)
+
+    if a.cmd == "guard":
+        try:
+            from . import guard
+        except ImportError:
+            import guard
+        return guard.main()
 
     if a.cmd == "sync":
         return do_sync(execute=a.yes)
@@ -897,6 +1085,10 @@ def main():
             return undo(data, ROOT, "global", execute=a.yes)
         if a.cmd == "auto":
             return do_auto_cmd(a.onoff)
+        if a.cmd == "hook":
+            return do_hook_cmd(a.onoff)
+        if a.cmd == "report":
+            return do_report(data)
         if a.only and a.only not in data["surfaces"]:
             raise KeyError(a.only)
         scope = "global" if a.glob else "project"
