@@ -2,7 +2,14 @@
 
 **허브 페이지 → https://tree8727-coder.github.io/stackpack/**
 
-1인 창업 AI 자동화 스택 — **읽는 카탈로그가 아니라 실행되는 카탈로그.**
+코딩·바이브코딩 세팅을 한 번에 — **읽는 카탈로그가 아니라 실행되는 카탈로그.**
+
+**코드와 카탈로그는 전부 무료이고 오픈소스(MIT)입니다.** 받아서 쓰고, 고치고,
+가져다 파셔도 됩니다. 파는 9,900원은 소프트웨어 값이 아니라 **대신 깔아드리고
+1:1로 봐드리는 값**입니다 — 터미널을 안 여는 분들을 위한 것입니다.
+
+쓰는 방법을 알려주고 싶으면 [사용법 제출](../../issues/new?template=사용법-제출.yml)로
+보내주세요. 채택되면 이름과 함께 실립니다. 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 도구 31개, 콤보 9개. 전부 `stack.yaml` 하나에서 나옵니다.
 
@@ -18,6 +25,25 @@ stack.yaml  ←  유일한 진실. 손으로만 편집.
 ```
 
 `uv`만 있으면 됩니다 (`winget install astral-sh.uv`). 나머지 의존성은 uv가 알아서 받습니다.
+
+## 두 축
+
+| | 하는 일 | 진실 | 명령 |
+|---|---|---|---|
+| **stack** | 프로그램을 깝니다 | `stack.yaml` | `uv run build.py …` |
+| **vibe** | 내 프로젝트에 **파일을 놓습니다** | `vibe.yaml` | `uv run vibe.py …` |
+
+`vibe` 는 **아무것도 설치하지 않습니다.** 도구를 안 깔아도 됩니다.
+사람들이 실제로 쓰는 방법을 `CLAUDE.md` 같은 파일로 내 프로젝트에 얹어줄 뿐입니다.
+
+```powershell
+uv run vibe.py list                 # 어떤 방법들이 있나
+uv run vibe.py apply all            # 뭐가 바뀌는지 먼저 보여줌 (아무것도 안 바꿈)
+uv run vibe.py apply all --yes      # 실제로 적용 (.bak 남김)
+```
+
+기존 파일은 **절대 덮어쓰지 않습니다.** 이미 있으면 건너뛰고, 덧붙일 때는 표식을 남겨
+두 번 돌려도 안 늘어납니다. 이건 `uv run vibe.py selftest` 가 매번 실제로 확인합니다.
 
 ## 쓰는 법
 
@@ -84,6 +110,20 @@ uv run build.py selftest
 | `stars.json` | 생성물 — `build.py stars`가 씁니다 |
 | `skill/SKILL.md` | 생성물 — `build.py skill`이 씁니다 |
 
+## 공개 페이지 세 장
+
+| 파일 | 무엇 | 생성 |
+|---|---|---|
+| `index.html` | 허브 — 도구 31개 전부 | `build.py html` |
+| `app.html` | 진단 — 세 번 눌러 필요한 것만 (무료) | `app.py` |
+| `buy.html` | 구매 — 카카오페이 + 계좌 | `app.py` (`sell.yaml` 있을 때만) |
+
+`sell.yaml` 은 개인 송금 링크라 저장소에 안 올라갑니다. `sell.example.yaml` 을 복사해 채우세요.
+
+**송금 링크가 살아 있는지는 기계로 확인할 수 없습니다.** 만료돼도 같은 페이지에 200 이 옵니다.
+그래서 `checked` 에 사람이 직접 열어 본 날짜를 적게 하고, **14일이 지나면 `buy.html` 을 만들지 않습니다.**
+확인하는 법은 `sell.example.yaml` 주석에 있습니다.
+
 ## 배포
 
 `main`은 소스만, `gh-pages`는 빌드된 `index.html`만 담습니다. Pages는 `gh-pages`를 서빙합니다.
@@ -114,3 +154,8 @@ cd ..\stackpack; git worktree remove -f ..\stackpack-pages
 
 `startup_automation_db/data_pipeline_v7~v10.py`에서 데이터를 병합 복구했습니다.
 원본 폴더는 그대로 두었습니다.
+
+## 라이선스
+
+이 저장소의 코드와 문서는 **MIT**입니다 ([LICENSE](LICENSE)).
+소개하는 도구 31개는 전부 남이 만든 것이고 각자의 라이선스를 따릅니다 — [출처.md](출처.md).
