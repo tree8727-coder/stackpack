@@ -539,15 +539,32 @@ def ensure_schedule():
     print(f"필요 없으면: {prog()} 자동 끄기")
 
 
+def load_check():
+    """검사기를 불러옵니다.
+
+    깔아서 쓰면 `stackpack.check`, 저장소에서 돌리면 `check` 입니다.
+    저장소에서만 돌려보면 이 차이를 못 봅니다 — 실제로 배포판에서 한 번 터졌습니다.
+    """
+    try:
+        from . import check          # 깔아서 쓸 때
+        return check
+    except ImportError:
+        pass
+    try:
+        import check                 # 저장소에서 돌릴 때
+        return check
+    except ImportError:
+        return None
+
+
 def do_check(target="."):
     """오답노트의 사고를 **내 프로젝트에서 실제로 찾습니다.**
 
     규칙을 알려주는 것과 "당신 프로젝트 이 줄에 그 사고가 있습니다" 라고
     말해주는 것은 다릅니다. 뒤쪽이 훨씬 셉니다.
     """
-    try:
-        import check
-    except ImportError:
+    check = load_check()
+    if check is None:
         print("검사기를 못 찾았습니다. 저장소에서 받아 쓰시면 됩니다:")
         print("  git clone https://github.com/tree8727-coder/stackpack")
         return 1
@@ -600,14 +617,14 @@ def do_selftest(data):
             assert 표 in b, f"{k}: 만들어낸 글에 「{표}」 가 없습니다"
 
     # 1-4. caught_by 가 진짜 있는 검사를 가리키는지. 없는 검사를 약속하면 안 됩니다.
-    try:
-        import check as _check
+    _check = load_check()
+    if _check is not None:
         있는검사 = {f.__name__ for f in _check.CHECKS}
         for k, inc in incidents.items():
             if c := inc.get("caught_by"):
                 assert c in 있는검사, f"{k}: 없는 검사를 가리킵니다 — {c}"
-    except ImportError:
-        pass
+    else:
+        assert not (ROOT / "check.py").exists(), "옆에 check.py 가 있는데 못 불러옵니다"
 
     # 2. '최적' 이라고 쓰지 않는다는 규율을 기계로 못박습니다
     text = VIBE.read_text(encoding="utf-8")
