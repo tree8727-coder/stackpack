@@ -175,6 +175,56 @@ def do_install(data, targets, execute=False, runner=_powershell, skip_installed=
     return 0
 
 
+def do_run(data, target, execute=False, runner=_powershell):
+    """콤보·도구의 `run` 명령을 실행합니다.
+
+    지금까지 이 저장소는 **깔아 주기만 하고 일은 안 해 줬습니다.**
+    콤보마다 `run` 이 적혀 있는데 그걸 실행하는 코드가 없었습니다.
+
+    do_install 과 같은 규칙을 지킵니다 — execute=False 면 runner 를 절대 부르지 않습니다.
+    한 가지가 더 있습니다: **없는 도구로는 실행하지 않습니다.**
+    「명령은 돌았는데 도구가 없어서 아무 일도 안 일어났다」가 제일 알아채기 어려운 실패라서입니다.
+    """
+    if target in data["combos"]:
+        node, kind = data["combos"][target], "콤보"
+    elif target in data["tools"]:
+        node, kind = data["tools"][target], "도구"
+    else:
+        raise KeyError(target)
+
+    cmd = (node.get("run") or "").strip()
+    if not cmd:
+        print(f"{kind} '{target}' 에는 실행 명령이 없습니다.")
+        return 1
+
+    needed = resolve(data, target)
+    st = do_status(data, needed, quiet=True)
+    missing = st["missing"]
+
+    print(f"{kind}: {node['name']}")
+    print(f"필요한 도구 {len(needed)}개 — 설치됨 {len(st['installed'])} / "
+          f"없음 {len(missing)} / 확인불가 {len(st['unknown'])}\n")
+
+    if missing:
+        names = ", ".join(data["tools"][k]["name"] for k in missing)
+        print(f"실행하지 않았습니다. 없는 도구가 있습니다: {names}\n")
+        print(f"  먼저: uv run build.py install {target} --skip-installed --yes")
+        return 1
+
+    print(f"  {cmd}\n")
+    if not execute:
+        print("[미리보기] 위 명령이 실행됩니다. 실제 실행은 --yes 를 붙이세요.")
+        return 0
+
+    print("[실행]")
+    rc = runner(cmd)
+    if rc != 0:
+        print(f"\n실패했습니다 (종료 코드 {rc}).")
+        return 1
+    print("\n끝났습니다.")
+    return 0
+
+
 # ─── 별점 ────────────────────────────────────────────────────────────────────
 
 def _fetch_one(repo):
@@ -487,12 +537,31 @@ def skill_body(data):
     )
     body = f"""---
 name: stackpack
-description: 1인 창업 AI 자동화 스택 카탈로그. 어떤 오픈소스 도구를 깔지, 어떤 조합으로 업무를 자동화할지 물을 때 사용. 설치까지 직접 실행할 수 있음. 트리거 - "무슨 툴 깔지", "자동화하고 싶은데", "콘텐츠 자동 생성", "경쟁사 조사 자동화", "로컬 AI", "회계 자동화", "터미널 세팅".
+description: 1인 창업자가 하려는 일을 받아서, 필요한 오픈소스 도구를 찾아 깔고 실제로 실행까지 해준다. 도구 목록을 읽어주는 게 아니라 일을 끝내는 쪽. 트리거 - "자동화하고 싶은데", "이거 만들어줘", "무슨 툴 깔지", "카드뉴스", "경쟁사 조사", "영수증 정리", "로컬 AI", "터미널 세팅", "설치해줘", "실행해줘".
 ---
 
 # stackpack
 
-도구 {len(tools)}개, 검증된 조합 {len(combos)}개. 원본 데이터는 `{STACK}`.
+**하려는 일을 받아서 끝내는 것이 목적입니다.** 도구 목록을 읽어주는 게 아닙니다.
+재료는 도구 {len(tools)}개와 미리 묶어 둔 조합 {len(combos)}개이고, 원본은 `{STACK}` 입니다.
+
+## 무엇이 이 스킬의 몫이고 무엇이 당신 몫인가
+
+- **당신(모델)의 몫**: 사용자가 하려는 일에 무엇이 필요한지 정하는 것.
+  이 목록이 「최선」이라는 근거는 어디에도 없습니다. **최선이라고 말하지 마세요.**
+  목록에 없는 도구가 더 맞으면 그렇게 말하고, 그건 이 스킬 밖에서 안내하세요.
+- **이 스킬의 몫**: 정해진 것을 **안전하게** 깔고 실행하는 것.
+  상태 대조, 미리보기 기본값, 설치 후 검증 — 이 세 가지가 이 스킬이 존재하는 이유입니다.
+
+## 조합에 없는 일이면 도구를 직접 골라 쓰세요
+
+`install` 과 `status` 는 **도구 키를 여러 개 그냥 나열해도 됩니다.**
+미리 묶어 둔 9개에 사용자의 일이 없다고 해서 멈추지 마세요.
+
+```
+uv run {ROOT}/build.py status playwright jq uv
+uv run {ROOT}/build.py install playwright jq uv --skip-installed --yes
+```
 
 ## 순서 — 이 순서를 지키세요
 
@@ -530,7 +599,19 @@ uv run {ROOT / 'build.py'} status <키>
 
 "설치했습니다"라고 말하기 전에 이걸로 확인하세요. winget은 실패해도 조용할 때가 있습니다.
 
-키는 아래 표의 콤보 키 또는 도구 키. `all`도 됩니다.
+### 5) 여기서 멈추지 말고 — 실제로 실행하세요
+
+설치는 목적이 아닙니다. 사용자는 **일이 끝나기를** 원합니다.
+
+```
+uv run {ROOT / 'build.py'} run <키>          # 미리보기 — 아무것도 실행 안 함
+uv run {ROOT / 'build.py'} run <키> --yes    # 실제 실행
+```
+
+`run` 은 **필요한 도구가 하나라도 없으면 실행하지 않고 멈춥니다.**
+「명령은 돌았는데 도구가 없어 아무 일도 안 일어났다」가 제일 알아채기 어려운 실패라서입니다.
+
+키는 아래 표의 콤보 키 또는 도구 키. `install`·`status`는 `all`도 됩니다.
 콤보 설치 명령은 멤버 도구에서 자동으로 합쳐지므로 직접 조합하지 마세요.
 
 ## 콤보 — 목적에서 시작하기
@@ -619,6 +700,41 @@ def do_selftest(data):
     do_install(data, ["fzf"], execute=True, runner=lambda c: called.append(c) or 0)
     assert called == ["winget install junegunn.fzf"], called
 
+    # run 계열 검사. do_status 를 갈아 끼워서 「도구가 다 있는 PC」를 흉내냅니다.
+    # 이 갈아 끼우기가 없으면, 도구가 안 깔린 PC에서는 없는-도구 분기에 먼저 걸려
+    # 미리보기 검사가 **닿지도 못한 채 통과**합니다. E10 과 같은 함정입니다.
+    real_status = globals()["do_status"]
+
+    def stub_status(installed_all):
+        return lambda d, keys, quiet=False: (
+            {"installed": list(keys), "missing": [], "unknown": []} if installed_all
+            else {"installed": [], "missing": list(keys), "unknown": []}
+        )
+
+    try:
+        # 4-1. 도구가 다 있어도 미리보기는 절대 실행하지 않는다
+        globals()["do_status"] = stub_status(True)
+        for ck in combos:
+            rc = do_run(data, ck, execute=False, runner=boom)
+            assert rc == 0, f"{ck}: 도구가 다 있는데 미리보기가 실패했습니다"
+
+        # 4-2. 도구가 다 있으면 --yes 는 실제로 부른다
+        ran = []
+        do_run(data, "bulk-image", execute=True, runner=lambda c: ran.append(c) or 0)
+        assert ran == [combos["bulk-image"]["run"].strip()], ran
+
+        # 4-3. 없는 도구가 있으면 --yes 여도 실행하지 않는다.
+        #      「명령은 돌았는데 도구가 없어 아무 일도 안 일어났다」가 제일 안 보이는 실패다.
+        globals()["do_status"] = stub_status(False)
+        assert do_run(data, "bulk-image", execute=True, runner=boom) == 1, \
+            "도구가 없는데 실행을 시도했습니다"
+    finally:
+        globals()["do_status"] = real_status
+
+    # 4-4. 콤보·도구 전부 실행 명령이 비어 있지 않은지
+    for ck, c in combos.items():
+        assert (c.get("run") or "").strip(), f"콤보 {ck} → run 이 비었습니다"
+
     # 5. checks가 실재하는 도구만 가리키는지 + 확인 명령 해석
     for k in data.get("checks", {}):
         assert k in tools, f"checks → 없는 도구 '{k}'"
@@ -704,6 +820,9 @@ def main():
     pst.add_argument("targets", nargs="*", default=["all"], help="콤보 키 / 도구 키 (기본 all)")
     ps = sub.add_parser("skill", help="Claude Code 스킬 생성")
     ps.add_argument("--install", action="store_true", help="~/.claude/skills/ 에 설치")
+    pr = sub.add_parser("run", help="콤보·도구를 실제로 실행")
+    pr.add_argument("target", help="콤보 키 / 도구 키")
+    pr.add_argument("--yes", action="store_true", help="실제로 실행 (없으면 미리보기)")
     a = p.parse_args()
 
     data = load()
@@ -719,6 +838,8 @@ def main():
         if a.cmd == "status":
             do_status(data, a.targets or ["all"])
             return 0
+        if a.cmd == "run":
+            return do_run(data, a.target, execute=a.yes)
         return do_install(data, a.targets, execute=a.yes, skip_installed=a.skip_installed)
     except KeyError as k:
         print(f"모르는 키: {k}\n콤보: {', '.join(data['combos'])}\n도구: {', '.join(data['tools'])}")
