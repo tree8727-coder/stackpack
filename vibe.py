@@ -28,6 +28,7 @@ Claude Code 와 Google Antigravity 를 함께 봅니다. 도구마다 읽는 파
 import argparse
 import difflib
 import re
+import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -135,6 +136,22 @@ def marker(key):
     return f"<!-- vibe:{key} -->"
 
 
+def legacy_block(key, body):
+    """끝 표시가 없던 시절의 블록 모양.
+
+    옛 블록을 알아볼 때 **경계를 추측하지 않습니다.** 우리가 그때 썼을 글자와
+    정확히 일치할 때만 그 자리로 봅니다. 추측하면 그 사이에 사람이 써 넣은
+    글까지 같이 지우게 됩니다.
+    """
+    return f"\n{marker(key)}\n{body}\n"
+
+
+def end_marker(key):
+    """블록의 끝. 이게 없으면 되돌리기가 "다음 표시까지" 를 지우게 되고,
+    사람이 그 사이에 써 넣은 글까지 같이 사라집니다."""
+    return f"<!-- /vibe:{key} -->"
+
+
 def recipes_for(data, targets):
     if list(targets) == ["all"]:
         return {k: v for k, v in data["recipes"].items() if v["status"] == "검증됨"}
@@ -180,19 +197,25 @@ def yield_step(steps, pending, path, key, f):
         return
 
     if f["mode"] == "append":
+        새블록 = f"\n{marker(key)}\n{body}\n{end_marker(key)}\n"
+        옛것 = legacy_block(key, body)
+        if before is not None and 옛것 in before and end_marker(key) not in before:
+            pending[path] = before.replace(옛것, 새블록)
+            steps.append((path, before, pending[path], f"옛 모양을 새로 바꿈 ({key})"))
+            return
         if before is not None and marker(key) in before:
             pending[path] = before
             steps.append((path, before, before, f"이미 적용됨 — 건너뜀 ({key})"))
             return
         base = before if before is not None else ""
-        pending[path] = base.rstrip("\n") + "\n" + f"\n{marker(key)}\n{body}\n"
+        pending[path] = base.rstrip("\n") + "\n" + 새블록
         steps.append((path, before, pending[path], f"덧붙임 ({key})"))
         return
 
     raise AssertionError(f"{key}: 모르는 mode '{f['mode']}'")
 
 
-def do_apply(data, targets, root, execute=False, scope="project", only=None):
+def do_apply(data, targets, root, execute=False, scope="project", only=None, quiet=False):
     steps = plan(data, targets, root, scope, only)
     label = {p: f"{n}: {p}" for _, n, p in surface_paths(data, scope, root, only)}
     # .bak 은 **한 번만** 씁니다. 한 파일에 방법 여러 개가 붙는데 단계마다 덮어쓰면
@@ -206,11 +229,13 @@ def do_apply(data, targets, root, execute=False, scope="project", only=None):
     for path, before, after, why in steps:
         rel = label.get(path, str(path))
         if before == after:
-            print(f"--  {rel}  {why}")
+            if not quiet:
+                print(f"--  {rel}  {why}")
             continue
         changed += 1
         touched.add(path)
-        print(f"++  {rel}  {why}")
+        if not quiet:
+            print(f"++  {rel}  {why}")
         if not execute:
             diff = difflib.unified_diff(
                 (before or "").splitlines(True), after.splitlines(True),
@@ -227,11 +252,13 @@ def do_apply(data, targets, root, execute=False, scope="project", only=None):
 
     # steps 로 안 끝나는 것 — 사람이 해야 하는 절차
     for key, r in recipes_for(data, targets).items():
-        if r.get("steps"):
+        if r.get("steps") and not quiet:
             print(f"\n[{key}] 이건 사람이 해야 합니다:")
             for s in r["steps"]:
                 print(f"  - {s}")
 
+    if quiet:
+        return 0
     print()
     if not changed:
         print("바꿀 게 없습니다. 이미 다 적용돼 있습니다.")
@@ -325,6 +352,180 @@ def do_sync(execute=False):
             path.parent.mkdir(parents=True, exist_ok=True)
     print()
     return do_apply(data, ["all"], ROOT, execute=execute, scope="global")
+
+
+def detected(data):
+    """이 컴퓨터에 실제로 깔린 도구만. 안 쓰는 도구 자리에 파일을 만들면 쓰레기입니다."""
+    found = []
+    for key, s in data["surfaces"].items():
+        d = s.get("detect")
+        if d and Path(d).expanduser().exists():
+            found.append(key)
+    return found
+
+
+def undo(data, root, scope="global", execute=False):
+    """넣었던 것을 전부 빼냅니다. 사람이 그 사이에 써 넣은 글은 건드리지 않습니다."""
+    지움 = 0
+    for _, name, path in surface_paths(data, scope, root):
+        if not path.exists():
+            continue
+        before = path.read_text(encoding="utf-8")
+        after = before
+        for key, r in data["recipes"].items():
+            s, e = marker(key), end_marker(key)
+            while s in after and e in after:
+                i, j = after.index(s), after.index(e) + len(e)
+                if j < i:            # 짝이 안 맞으면 건드리지 않습니다
+                    break
+                after = after[:i] + after[j:]
+            for f in r.get("files", []):   # 끝 표시가 없던 시절 것
+                옛것 = legacy_block(key, f["body"].rstrip("\n"))
+                after = after.replace(옛것, "")
+        after = after.replace("\n\n\n", "\n\n").strip("\n")
+        after = after + "\n" if after else ""
+        if after == before:
+            print(f"--  {name}: 뺄 게 없습니다")
+            continue
+        지움 += 1
+        남은줄 = len([l for l in after.splitlines() if l.strip()])
+        print(f"++  {name}: 스택팩이 넣은 글을 뺐습니다 (남은 내용 {남은줄}줄)")
+        if execute:
+            if after.strip():
+                path.write_text(after, encoding="utf-8")
+            else:
+                path.unlink()        # 우리가 만든 파일이고 이제 빈 파일입니다
+                print(f"    빈 파일이라 지웠습니다: {path}")
+    print()
+    if not 지움:
+        print("이미 깨끗합니다.")
+    elif execute:
+        print("다 뺐습니다. 원래대로 돌아왔습니다.")
+    else:
+        print("아무것도 안 바꿨습니다. 진짜로 빼려면 다시 한 번 치세요: 되돌리기 --진짜")
+    return 0
+
+
+def do_auto(data, execute=True):
+    """아무것도 안 붙이고 그냥 실행했을 때. 이게 기본 동작입니다."""
+    쓰는것 = detected(data)
+    if 쓰는것:
+        이름 = ", ".join(data["surfaces"][k]["name"] for k in 쓰는것)
+        print(f"찾았습니다: {이름}")
+    else:
+        쓰는것 = list(data["surfaces"])
+        print("AI 코딩 프로그램을 못 찾아서, 아는 자리 전부에 넣어 둡니다.")
+    print()
+
+    총 = 0
+    for key in 쓰는것:
+        s = data["surfaces"][key]
+        path = Path(s["global"]).expanduser()
+        if execute:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        steps = plan(data, ["all"], ROOT, "global", key)
+        총 += sum(1 for _, b, a, _ in steps if b != a)
+        do_apply(data, ["all"], ROOT, execute=execute, scope="global", only=key, quiet=True)
+
+    print()
+    if 총 == 0:
+        print("이미 다 돼 있습니다. 아무것도 안 했습니다.")
+    else:
+        print(f"끝났습니다. 방법 {총}개를 넣었습니다.")
+        print("이제 AI가 알아서 읽습니다. 더 하실 건 없습니다.")
+    return 0
+
+
+# ── 자동 갱신 ────────────────────────────────────────────────────────────────
+# "설치해두면 알아서" 의 마지막 조각입니다. 새 방법이 들어와도 사람이 뭘 치지
+# 않게 하려면, 하루 한 번 대신 받아오는 일을 컴퓨터에 걸어 두어야 합니다.
+#
+# 묻지 않고 겁니다. 대신 무엇을 걸었는지 한 줄로 말하고, 끄는 법을 그 자리에
+# 같이 적습니다. 모르게 걸어 두는 것과 말하고 걸어 두는 것은 다릅니다.
+AUTO_MARK = Path.home() / ".stackpack" / "자동갱신_켜짐"
+PLIST = Path.home() / "Library" / "LaunchAgents" / "com.stackpack.sync.plist"
+TASK = "stackpack 자동갱신"
+
+
+def _exe():
+    """자기 자신을 부르는 방법. 깔아 쓰면 stackpack, 저장소면 파이썬 + 파일."""
+    name = Path(sys.argv[0]).name
+    if not name.endswith(".py"):
+        return [str(Path(sys.argv[0]).resolve())]
+    return [sys.executable, str(Path(__file__).resolve())]
+
+
+def schedule_on():
+    cmd = _exe() + ["sync", "--yes"]
+    if sys.platform == "darwin":
+        args = "".join(f"    <string>{c}</string>\n" for c in cmd)
+        PLIST.parent.mkdir(parents=True, exist_ok=True)
+        PLIST.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0"><dict>\n'
+            '  <key>Label</key><string>com.stackpack.sync</string>\n'
+            f'  <key>ProgramArguments</key><array>\n{args}  </array>\n'
+            '  <key>StartInterval</key><integer>86400</integer>\n'
+            '  <key>RunAtLoad</key><false/>\n'
+            '</dict></plist>\n', encoding="utf-8")
+        subprocess.run(["launchctl", "unload", str(PLIST)],
+                       capture_output=True)
+        r = subprocess.run(["launchctl", "load", str(PLIST)], capture_output=True, text=True)
+        return r.returncode == 0, f"맥 로그인 항목 ({PLIST.name})"
+    if sys.platform.startswith("win"):
+        r = subprocess.run(["schtasks", "/create", "/f", "/sc", "daily",
+                            "/tn", TASK, "/tr", " ".join(f'"{c}"' for c in cmd)],
+                           capture_output=True, text=True)
+        return r.returncode == 0, "윈도우 작업 스케줄러"
+    return False, "이 운영체제는 아직 자동 갱신을 못 겁니다"
+
+
+def schedule_off():
+    if sys.platform == "darwin" and PLIST.exists():
+        subprocess.run(["launchctl", "unload", str(PLIST)], capture_output=True)
+        PLIST.unlink()
+        return True
+    if sys.platform.startswith("win"):
+        subprocess.run(["schtasks", "/delete", "/f", "/tn", TASK], capture_output=True)
+        return True
+    return False
+
+
+def ensure_schedule():
+    """처음 한 번만 겁니다. 이미 걸었으면 아무 말도 안 합니다."""
+    if AUTO_MARK.exists():
+        return
+    ok, 어디 = schedule_on()
+    if not ok:
+        return
+    AUTO_MARK.parent.mkdir(parents=True, exist_ok=True)
+    AUTO_MARK.write_text(어디 + "\n", encoding="utf-8")
+    print()
+    print(f"새 방법이 나오면 하루 한 번 알아서 받아옵니다 ({어디}).")
+    print(f"필요 없으면: {prog()} 자동 끄기")
+
+
+def do_auto_cmd(onoff):
+    if onoff in ("끄기", "off"):
+        schedule_off()
+        AUTO_MARK.unlink(missing_ok=True)
+        print("자동 갱신을 껐습니다. 새 방법은 이제 직접 받으셔야 합니다:")
+        print(f"  {prog()} 갱신 --진짜")
+        return 0
+    if onoff in ("켜기", "on"):
+        ok, 어디 = schedule_on()
+        if not ok:
+            print(f"걸지 못했습니다: {어디}")
+            return 1
+        AUTO_MARK.parent.mkdir(parents=True, exist_ok=True)
+        AUTO_MARK.write_text(어디 + "\n", encoding="utf-8")
+        print(f"켰습니다. 하루 한 번 알아서 받아옵니다 ({어디}).")
+        return 0
+    print("켜져 있습니다." if AUTO_MARK.exists() else "꺼져 있습니다.")
+    print(f"바꾸려면: {prog()} 자동 켜기  /  {prog()} 자동 끄기")
+    return 0
 
 
 def do_selftest(data):
@@ -427,6 +628,58 @@ def do_selftest(data):
     except AssertionError as e:
         assert "단점" in str(e), e
 
+    # 7-2. 되돌리기가 **남이 쓴 글은 안 지우고** 우리 것만 빼내는가.
+    #      끝 표시가 없으면 "다음 표시까지" 를 지우게 되고, 그 사이에 사람이
+    #      써 넣은 글이 같이 사라집니다. 그래서 여기서 일부러 사이에 끼워 봅니다.
+    with tempfile.TemporaryDirectory() as td2:
+        tmp2 = Path(td2)
+        원본 = "# 내가 먼저 쓴 것\n지우지 마\n"
+        for _, _, sp in surface_paths(data, "project", tmp2):
+            sp.write_text(원본, encoding="utf-8")
+        do_apply(data, ["all"], tmp2, execute=True, quiet=True)
+        for _, _, sp in surface_paths(data, "project", tmp2):
+            글 = sp.read_text(encoding="utf-8")
+            i = 글.index(end_marker(next(iter(recipes))))
+            j = 글.index("\n", i) + 1
+            sp.write_text(글[:j] + "\n## 블록 사이에 내가 끼워 넣은 글\n" + 글[j:],
+                          encoding="utf-8")
+        undo(data, tmp2, "project", execute=True)
+        for _, _, sp in surface_paths(data, "project", tmp2):
+            남은 = sp.read_text(encoding="utf-8") if sp.exists() else ""
+            assert "지우지 마" in 남은, "되돌리기가 남이 먼저 쓴 글을 지웠습니다"
+            assert "끼워 넣은 글" in 남은, "되돌리기가 블록 사이의 글을 지웠습니다"
+            assert "vibe:" not in 남은, f"되돌렸는데 스택팩 글이 남았습니다: {sp.name}"
+
+    # 7-2b. 끝 표시가 없던 옛 블록도 알아보고 새 모양으로 바꾸는가.
+    #       그리고 **글자가 조금이라도 다르면 손대지 않는가** — 옛것인 척하는
+    #       남의 글을 지우면 안 됩니다.
+    with tempfile.TemporaryDirectory() as td4:
+        tmp4 = Path(td4)
+        키 = next(iter(recipes))
+        본문 = recipes[키]["files"][0]["body"].rstrip("\n")
+        옛것 = legacy_block(키, 본문)
+        남의것 = f"\n{marker(키)}-비슷한거\n내가 쓴 글\n"
+        for _, _, sp in surface_paths(data, "project", tmp4):
+            sp.write_text("머리말\n" + 옛것 + 남의것, encoding="utf-8")
+        do_apply(data, ["all"], tmp4, execute=True, quiet=True)
+        for _, _, sp in surface_paths(data, "project", tmp4):
+            글 = sp.read_text(encoding="utf-8")
+            assert end_marker(키) in 글, "옛 블록이 새 모양으로 안 바뀌었습니다"
+            assert 글.count(marker(키) + "\n") == 1, "옛 블록 옆에 새 블록이 또 붙었습니다"
+            assert "내가 쓴 글" in 글, "비슷하게 생긴 남의 글을 건드렸습니다"
+        undo(data, tmp4, "project", execute=True)
+        for _, _, sp in surface_paths(data, "project", tmp4):
+            남은 = sp.read_text(encoding="utf-8") if sp.exists() else ""
+            assert "머리말" in 남은 and "내가 쓴 글" in 남은, "되돌리기가 남의 글을 지웠습니다"
+
+    # 7-3. 우리가 만든 빈 파일은 되돌릴 때 지웁니다 (쓰레기를 안 남깁니다)
+    with tempfile.TemporaryDirectory() as td3:
+        tmp3 = Path(td3)
+        do_apply(data, ["all"], tmp3, execute=True, quiet=True)
+        undo(data, tmp3, "project", execute=True)
+        남은파일 = [f.name for f in tmp3.iterdir() if not f.name.endswith(".bak")]
+        assert not 남은파일, f"되돌렸는데 파일이 남았습니다: {남은파일}"
+
     # 11-2. 안내 문구가 실행 이름을 박아두면 깔아 쓰는 사람에게 없는 명령을 알려주게 됩니다
     src = Path(__file__).read_text(encoding="utf-8")
     # prog() 안의 한 번(정의)만 허용합니다. 두 번째부터는 박아 넣은 것입니다.
@@ -467,25 +720,53 @@ def do_selftest(data):
     return 0
 
 
+# 한글 이름 → 원래 명령. 어려운 영어를 외우게 하지 않으려는 것뿐이고,
+# 영어 이름도 그대로 둡니다. 아는 사람은 하던 대로 씁니다.
+별명 = {
+    "되돌리기": "undo", "지우기": "undo",
+    "목록": "list", "보기": "show",
+    "어디": "where", "어디에": "where",
+    "갱신": "sync", "최신": "sync",
+    "자동": "auto",
+}
+
+
 def main():
+    argv = sys.argv[1:]
+
+    # 아무것도 안 붙이고 그냥 실행 → 알아서 다 합니다. 이게 기본입니다.
+    if not argv:
+        data = load()
+        rc = do_auto(data, execute=True)
+        ensure_schedule()
+        return rc
+
+    argv = [별명.get(a, a) for a in argv]
+    argv = ["--yes" if a == "--진짜" else a for a in argv]
+    argv = ["--dry-run" if a == "--미리보기" else a for a in argv]
+
     p = argparse.ArgumentParser(description=__doc__.replace("{prog}", prog()),
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("list", help="방법 목록")
-    sub.add_parser("where", help="어느 도구의 어느 파일에 놓이는지")
-    psy = sub.add_parser("sync", help="최신으로 당겨서 전역에 다시 얹기")
-    psy.add_argument("--yes", action="store_true", help="실제로 적용 (없으면 미리보기)")
-    sub.add_parser("selftest", help="데이터 규율 + 안전장치 검사")
+    sub.add_parser("list", help="어떤 방법들이 있나")
+    sub.add_parser("where", help="어느 파일에 놓이는지")
+    sub.add_parser("selftest", help="스스로 검사")
+    pu = sub.add_parser("undo", help="넣었던 것 전부 빼기")
+    pu.add_argument("--yes", action="store_true", help="실제로 빼기")
+    pau = sub.add_parser("auto", help="자동 갱신 켜기/끄기")
+    pau.add_argument("onoff", nargs="?", default="상태", help="켜기 / 끄기")
+    psy = sub.add_parser("sync", help="최신 방법 받아서 다시 넣기")
+    psy.add_argument("--yes", action="store_true")
     psh = sub.add_parser("show", help="방법 하나 자세히")
     psh.add_argument("key")
     pa = sub.add_parser("apply", help="내 프로젝트에 적용")
-    pa.add_argument("targets", nargs="+", help="방법 키 / all (all = 검증됨 전부)")
-    pa.add_argument("--yes", action="store_true", help="실제로 적용 (없으면 미리보기)")
-    pa.add_argument("--dir", default=".", help="적용할 폴더 (기본: 지금 폴더)")
-    pa.add_argument("--global", dest="glob", action="store_true",
-                    help="도구의 전역 규칙 파일에 놓아 모든 프로젝트에 자동 적용")
-    pa.add_argument("--only", help="도구 하나만 (claude-code / antigravity)")
-    a = p.parse_args()
+    pa.add_argument("targets", nargs="*", default=["all"])
+    pa.add_argument("--yes", action="store_true")
+    pa.add_argument("--dry-run", action="store_true", help="보여주기만")
+    pa.add_argument("--dir", default=".")
+    pa.add_argument("--global", dest="glob", action="store_true")
+    pa.add_argument("--only", help="도구 하나만")
+    a = p.parse_args(argv)
 
     if a.cmd == "sync":
         return do_sync(execute=a.yes)
@@ -496,23 +777,28 @@ def main():
             return do_list(data)
         if a.cmd == "where":
             return do_where(data)
-        if a.cmd == "show":
-            return do_show(data, a.key)
         if a.cmd == "selftest":
             return do_selftest(data)
+        if a.cmd == "show":
+            return do_show(data, a.key)
+        if a.cmd == "undo":
+            return undo(data, ROOT, "global", execute=a.yes)
+        if a.cmd == "auto":
+            return do_auto_cmd(a.onoff)
         if a.only and a.only not in data["surfaces"]:
             raise KeyError(a.only)
         scope = "global" if a.glob else "project"
         root = Path(a.dir).resolve()
+        실행 = not a.dry_run
         for _, name, path in surface_paths(data, scope, root, a.only):
             print(f"{name}  →  {path}")
-            if a.yes:
+            if 실행:
                 path.parent.mkdir(parents=True, exist_ok=True)
-        print("전역입니다 — 모든 프로젝트에서 자동으로 읽힙니다.\n" if a.glob
-              else "이 폴더에만 적용됩니다.\n")
-        return do_apply(data, a.targets, root, execute=a.yes, scope=scope, only=a.only)
+        print()
+        return do_apply(data, a.targets or ["all"], root, execute=실행,
+                        scope=scope, only=a.only)
     except KeyError as k:
-        print(f"모르는 키: {k}\n있는 것: {', '.join(data['recipes'])}")
+        print(f"그런 건 없습니다: {k}\n있는 것: {', '.join(data['recipes'])}")
         return 1
 
 

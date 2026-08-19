@@ -43,8 +43,13 @@ stack.yaml  ←  유일한 진실. 손으로만 편집.
 ### 깔기 — 한 줄
 
 ```powershell
-uvx stackpack apply all --global --yes
+uvx stackpack
 ```
+
+이게 전부입니다. 붙일 것도, 누를 것도, 고를 것도 없습니다.
+깔려 있는 도구만 찾아서 넣고, 새 방법은 하루 한 번 알아서 받아옵니다.
+
+되돌리는 것도 한 마디입니다 — `uvx stackpack 되돌리기 --진짜`.
 
 `uv` 만 있으면 됩니다(`winget install astral-sh.uv` · 맥은 `brew install uv`).
 저장소를 받을 필요도, 파이썬을 따로 깔 필요도 없습니다.
