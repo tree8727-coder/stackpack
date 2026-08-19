@@ -54,6 +54,7 @@ incidents:
     caught_by: check_secrets
     target: 아무 언어
     when: ["*"]
+    severity: 높음
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["ERRORS.md E8"] }
 
@@ -72,6 +73,7 @@ incidents:
     caught_by: check_env_tracked
     target: git 쓰는 프로젝트
     when: [".git", ".env*"]
+    severity: 높음
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["ERRORS.md E5"] }
 
@@ -89,6 +91,7 @@ incidents:
     caught_by: check_static_root
     target: 웹서버
     when: ["*.js", "*.ts", "*.mjs", "package.json"]
+    severity: 높음
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["ERRORS.md E7"] }
 
@@ -110,6 +113,7 @@ incidents:
     caught_by: check_fly_free_tier
     target: 배포
     when: ["fly.toml", "railway.*", "render.yaml", "Procfile", "Dockerfile", "*.tf"]
+    severity: 높음
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["ERRORS.md E13"] }
 
@@ -218,6 +222,7 @@ incidents:
     blind: 서버가 값을 잘못 갖고 있으면 이 규칙으로는 못 막는다.
     target: 서버·API
     when: ["*.js", "*.ts", "*.py", "package.json"]
+    severity: 높음
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E6"] }
 
@@ -255,6 +260,7 @@ incidents:
       - 확인한 값에는 **확인한 날짜를 같이 적는다.** 그리고 한 군데에만 적고 나머지는 참조한다.
     blind: 서비스가 조건을 조용히 바꾸면 확인한 값도 틀리게 된다.
     target: 배포·외부 서비스
+    severity: 높음
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E12"] }
 

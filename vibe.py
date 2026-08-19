@@ -45,7 +45,12 @@ VIBE = ROOT / "vibe.yaml"
 
 # 배포판(uvx·pip)에는 저장소가 없습니다. git pull 로는 갱신할 수 없어서
 # sync 는 깃허브에서 vibe.yaml 만 직접 받아 여기 둡니다.
-REMOTE = "https://raw.githubusercontent.com/tree8727-coder/stackpack/main/vibe.yaml"
+# **`main` 이 아니라 태그된 판**만 받습니다. main 을 받으면 우리 계정이 털린 날
+# 하루 만에 모든 설치본의 AI 규칙이 바뀝니다. 태그는 사람이 일부러 붙여야 합니다.
+RELEASES = "https://api.github.com/repos/tree8727-coder/stackpack/releases/latest"
+RAW = "https://raw.githubusercontent.com/tree8727-coder/stackpack/{ref}/vibe.yaml"
+REMOTE = RAW.format(ref="main")     # 태그가 아직 없을 때만 (그 사실을 말합니다)
+많이바뀜 = 0.30                      # 이만큼 넘게 바뀌면 멈추고 사람에게 알립니다
 CACHE = Path.home() / ".stackpack" / "vibe.yaml"
 
 # 도구마다 "모든 프로젝트에서 자동으로 읽는 파일"이 따로 있습니다. 경로는 vibe.yaml 의
@@ -155,6 +160,12 @@ def strip_orphans(text, 살릴키):
 
 INDEX_KEY = "오답노트"
 
+# 규칙 파일에 넣을 최대 줄 수. 이건 취향이 아니라 **지시 예산**입니다 —
+# 지시가 늘수록 따르는 정확도가 떨어진다는 것이 측정돼 있습니다
+# (IFScale, arXiv 2507.11538 / 다중 제약 10~15%p 하락, arXiv 2407.03978).
+# 넘치는 것은 버리지 않고 스킬로 보냅니다.
+INDEX_MAX = 12
+
 
 def index_line(inc):
     """규칙 파일에 들어갈 **한 줄.** 증상 + 그래서 뭘 하나."""
@@ -235,10 +246,27 @@ def index_block(data, 고른것=None):
     줄.append("")
     쓸것 = 고른것 or data["incidents"]
     센것 = 내_기록(data)
-    # 이 컴퓨터에서 실제로 걸린 것을 위로. 안 걸린 것은 원래 순서 그대로.
-    차례 = sorted(쓸것.items(), key=lambda kv: -센것.get(kv[0], 0))
+
+    # 기계가 잡는 사고는 **AI 에게 말하지 않습니다.** 관문은 토큰도 지시 예산도
+    # 0 인데 100% 확실합니다. 여기 또 적으면 지시만 늘고 정확도는 떨어집니다
+    # (IFScale: 지시 밀도가 오르면 임계점 이후 급락).
+    자동 = {k: v for k, v in 쓸것.items() if v.get("caught_by")}
+    말할것 = {k: v for k, v in 쓸것.items() if not v.get("caught_by")}
+
+    # 심각도 먼저, 그다음 이 컴퓨터에서 걸린 횟수. **드문 것과 안 중요한 것은 다릅니다** —
+    # 요금 사고는 개인당 드물게 걸리지만 한 번에 돈이 나갑니다.
+    차례 = sorted(말할것.items(),
+                key=lambda kv: (kv[1].get("severity") != "높음", -센것.get(kv[0], 0)))
+    보일것 = 차례[:INDEX_MAX]
     줄 += [index_line(i) + (f"  ← 여기서 {센것[k]}번 걸림" if 센것.get(k) else "")
-          for k, i in 차례]
+          for k, i in 보일것]
+
+    if 자동:
+        번호 = " · ".join(sorted(v["id"] for v in 자동.values()))
+        줄 += ["", f"위 밖에 **{번호}** 는 관문이 **자동으로 막는다.** 외울 필요 없다."]
+    if len(차례) > len(보일것):
+        줄 += [f"나머지 {len(차례) - len(보일것)}건은 `오답노트` 스킬에 있다 — "
+              "상황이 오면 그때 찾아본다."]
     줄 += ["", f"전문 보기: `stackpack 보기 <항목>` · 내 프로젝트 점검: `stackpack 검사`"]
     return "\n".join(줄)
 
@@ -440,7 +468,7 @@ def do_show(data, key):
     return 0
 
 
-def do_sync(execute=False):
+def do_sync(execute=False, 강제=False):
     """저장소를 최신으로 당기고 전역에 다시 얹습니다.
 
     사람들이 낸 방법이 늘어나도 손으로 다시 칠 일이 없게 하려는 명령입니다.
@@ -458,10 +486,20 @@ def do_sync(execute=False):
             return 1
     else:
         # 배포판 — 깃이 없습니다. vibe.yaml 만 받아옵니다.
-        assert REMOTE.startswith("https://"), "평문 http 로는 받지 않습니다"
-        print(f"받는 중 … {REMOTE}")
+        # 태그된 판을 먼저 찾습니다
+        주소, 어느판 = REMOTE, "main (태그 없음)"
         try:
-            raw = fetch(REMOTE)
+            정보 = json.loads(fetch(RELEASES))
+            if 태그 := 정보.get("tag_name"):
+                주소, 어느판 = RAW.format(ref=태그), 태그
+        except Exception:
+            pass
+        assert 주소.startswith("https://"), "평문 http 로는 받지 않습니다"
+        if 어느판.startswith("main"):
+            print("⚠ 아직 태그된 판이 없어 main 을 받습니다. 태그가 생기면 그것만 받습니다.")
+        print(f"받는 중 … {어느판}")
+        try:
+            raw = fetch(주소)
         except Exception as e:
             print(f"받지 못했습니다: {e}\n지금 있는 것으로 그대로 둡니다.")
             return 1
@@ -471,9 +509,25 @@ def do_sync(execute=False):
         except AssertionError as e:
             print(f"받은 파일이 규율을 어깁니다: {e}\n적용하지 않습니다.")
             return 1
+        # 한 번에 너무 많이 바뀌면 **적용하지 않고 멈춥니다.**
+        # 형식 검사는 「형식이 맞는 나쁜 규칙」 을 못 막습니다. 양이 그걸 대신 봅니다.
+        지금것 = source()
+        if 지금것.exists():
+            옛것 = 지금것.read_text(encoding="utf-8")
+            차이 = abs(len(raw) - len(옛것)) / max(len(옛것), 1)
+            if 차이 > 많이바뀜:
+                print(f"한 번에 {차이:.0%} 가 바뀝니다(기준 {많이바뀜:.0%}). "
+                      "적용하지 않고 멈춥니다.")
+                print(f"직접 보시려면: {주소}")
+                print(f"그래도 받으려면: {prog()} 갱신 --진짜 --많이바뀌어도")
+                if not 강제:
+                    return 1
         CACHE.parent.mkdir(parents=True, exist_ok=True)
+        if CACHE.exists():
+            CACHE.with_suffix(".yaml.직전").write_text(
+                CACHE.read_text(encoding="utf-8"), encoding="utf-8")
         CACHE.write_text(raw, encoding="utf-8")
-        print(f"받았습니다 → {CACHE}")
+        print(f"받았습니다 ({어느판}) → {CACHE}")
 
     data = load()   # 갱신 뒤에 다시 읽습니다 — 안 그러면 옛 방법을 얹습니다
     print()
@@ -1268,8 +1322,24 @@ def do_selftest(data):
     for 아이디 in 가짜기록:
         assert 아이디 in 번호맵, f"검사가 없는 사고 번호를 씁니다: {아이디}"
     색인줄 = [l for l in index_block(data).splitlines() if l.startswith("- **[")]
-    assert len(색인줄) == len(incidents), \
-        f"색인에 {len(색인줄)}건뿐입니다 — 순서를 바꾸다 {len(incidents) - len(색인줄)}건을 빠뜨렸습니다"
+    assert len(색인줄) <= INDEX_MAX, \
+        f"색인이 {len(색인줄)}줄입니다 — 지시 예산 {INDEX_MAX} 을 넘었습니다"
+    # 예산 자체에도 상한을 둡니다. 상수를 키우면 위 검사가 무력해지므로,
+    # 늘리려면 이 줄을 일부러 고쳐야 합니다 — 그때 근거를 대야 합니다.
+    assert INDEX_MAX <= 15, (
+        f"지시 예산이 {INDEX_MAX} 입니다. 지시가 늘수록 따르는 정확도가 떨어진다는 "
+        "측정이 있습니다(IFScale arXiv:2507.11538, 다중 제약 10~15%p arXiv:2407.03978). "
+        "늘리려면 그보다 나은 근거가 필요합니다.")
+    # 색인에서 뺀 것은 **버린 게 아니라 스킬에 있어야** 합니다. 조용히 사라지면 손실입니다.
+    스킬2 = skill_text(data)
+    for k, inc in incidents.items():
+        assert inc["name"] in 스킬2, f"{k} 가 색인에서도 스킬에서도 빠졌습니다"
+    # 심각한 것이 먼저 나와야 합니다 — 드문 것과 안 중요한 것은 다릅니다
+    높은것 = [i["id"] for i in incidents.values()
+            if i.get("severity") == "높음" and not i.get("caught_by")]
+    if 높은것 and 색인줄:
+        assert any(h in 색인줄[0] for h in 높은것), \
+            f"심각도 높은 사고가 첫 줄에 없습니다: {색인줄[0][:40]}"
 
     # 11-4c. 프로젝트 감지는 **파일 이름만** 봅니다. 내용을 읽으면 안 됩니다.
     import inspect as _ins
@@ -1281,6 +1351,15 @@ def do_selftest(data):
     for k, inc in incidents.items():
         assert inc["name"] in 스킬, f"스킬에 {k} 가 빠졌습니다"
     assert 스킬.startswith("---\nname: "), "스킬에 머리말이 없습니다"
+
+    # 11-4g. 자동 배포 안전장치 — 여기가 제일 큰 위험입니다. 매일 받아서 남의 AI
+    #         규칙에 자동으로 넣고 있으므로, 우리가 털리면 하루 만에 퍼집니다.
+    import inspect as _i3
+    동기소스 = _i3.getsource(do_sync)
+    assert "releases/latest" in RELEASES, "태그된 판을 찾지 않습니다"
+    assert "많이바뀜" in 동기소스, "한 번에 크게 바뀌는 것을 막지 않습니다"
+    assert ".직전" in 동기소스, "직전 판을 남기지 않습니다"
+    assert 0 < 많이바뀜 < 1, f"변경 상한이 이상합니다: {많이바뀜}"
 
     # 11-5. 문서에 적은 사고 건수가 실제와 맞는가.
     #        P4 가 바로 이것입니다 — 손으로 맞춘 숫자는 반드시 어긋납니다.
@@ -1391,6 +1470,8 @@ def main():
     pau.add_argument("onoff", nargs="?", default="상태", help="켜기 / 끄기")
     psy = sub.add_parser("sync", help="최신 방법 받아서 다시 넣기")
     psy.add_argument("--yes", action="store_true")
+    psy.add_argument("--많이바뀌어도", dest="force_big", action="store_true",
+                     help="한 번에 크게 바뀌어도 받기")
     psh = sub.add_parser("show", help="방법 하나 자세히")
     psh.add_argument("key")
     pa = sub.add_parser("apply", help="내 프로젝트에 적용")
@@ -1410,7 +1491,7 @@ def main():
         return guard.main()
 
     if a.cmd == "sync":
-        return do_sync(execute=a.yes)
+        return do_sync(execute=a.yes, 강제=a.force_big)
 
     data = load()
     try:
