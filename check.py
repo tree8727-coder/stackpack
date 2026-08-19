@@ -221,7 +221,49 @@ def check_hidden_assert(root: Path, findings):
                 ))
 
 
+# 한 덩어리가 이만큼 넘으면 «고치기 어려운 코드» 로 봅니다. (E26)
+# 이 숫자는 우리가 실제로 아파 본 지점입니다 — vibe.py 가 1,181줄, do_selftest 가
+# 308줄까지 자랐고, 그 상태에서 문자열 치환으로 고치다 함수 안쪽을 건드려 파일이 깨졌습니다.
+# **우리 저장소가 먼저 걸립니다.** 우리가 안 걸리는 기준은 아무도 안 믿습니다.
+MAX_FUNC_LINES = 200
+MAX_FILE_LINES = 800
+
+
+def check_too_big(root: Path, findings):
+    """E26 — 한 덩어리가 너무 커져서 고칠 때마다 엉뚱한 곳이 같이 바뀐다."""
+    import ast as _ast
+
+    for p, lines in scan_files(root):
+        rel = p.relative_to(root)
+        if len(lines) > MAX_FILE_LINES:
+            findings.append(Finding(
+                "E26", "주의", str(rel),
+                f"파일이 {len(lines)}줄입니다 (기준 {MAX_FILE_LINES})",
+                "AI 는 파일을 «구조» 가 아니라 «글자» 로 고칩니다. 커질수록 같은 글자가 여러 번 "
+                "나오고, 한 곳을 고치려던 치환이 다른 곳까지 바꿉니다.",
+                "역할이 다른 덩어리를 파일로 분리하세요. 옮기기만 해도 다음 수정이 쉬워집니다.",
+            ))
+        if p.suffix != ".py":
+            continue
+        try:
+            tree = _ast.parse("\n".join(lines))
+        except SyntaxError:
+            continue
+        for n in _ast.walk(tree):
+            if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                길이 = (n.end_lineno or n.lineno) - n.lineno
+                if 길이 > MAX_FUNC_LINES:
+                    findings.append(Finding(
+                        "E26", "주의", f"{rel}:{n.lineno}",
+                        f"함수 `{n.name}` 이 {길이}줄입니다 (기준 {MAX_FUNC_LINES})",
+                        "이 안에서 뭘 고치려면 전부 읽어야 합니다. 사람도 AI 도 마찬가지입니다.",
+                        "하는 일 단위로 쪼개세요. 이름이 안 떠오르는 덩어리가 있으면 "
+                        "그게 아직 정리가 안 된 부분입니다.",
+                    ))
+
+
 CHECKS = [
+    check_too_big,
     check_env_tracked, check_gitignore, check_static_root,
     check_secrets, check_fly_free_tier, check_hidden_assert,
 ]

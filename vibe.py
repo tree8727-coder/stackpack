@@ -152,6 +152,29 @@ def strip_orphans(text, 살릴키):
     return BLOCK_RE.sub(판정, text)
 
 
+INDEX_KEY = "오답노트"
+
+
+def index_line(inc):
+    """규칙 파일에 들어갈 **한 줄.** 증상 + 그래서 뭘 하나."""
+    return f"- **[{inc['id']}]** {inc['symptom']} → {' '.join(inc['fix'][0].split())}"
+
+
+def index_block(data):
+    """규칙 파일에는 **색인만** 넣습니다.
+
+    전문 21건을 매 세션 통째로 주입하면 토큰만 먹고 안 읽힙니다.
+    AI 가 알아봐야 하는 건 «지금이 그 상황인가» 이고, 그건 증상 한 줄이면 됩니다.
+    전문은 스킬에 두고 해당될 때만 불러오게 합니다.
+    """
+    줄 = ["## 남이 이미 당한 사고 — 같은 걸 두 번 하지 않는다", ""]
+    줄.append("아래 상황이 오면 **멈추고 해당 항목을 확인한다.** 전문은 `오답노트` 스킬에 있다.")
+    줄.append("")
+    줄 += [index_line(i) for i in data["incidents"].values()]
+    줄 += ["", f"전문 보기: `stackpack 보기 <항목>` · 내 프로젝트 점검: `stackpack 검사`"]
+    return "\n".join(줄)
+
+
 def body_for(inc):
     """AI 에게 갈 글을 항목에서 **만들어냅니다.** 손으로 적지 않습니다.
 
@@ -209,8 +232,9 @@ def plan(data, targets, root, scope="project", only=None):
     steps = []
     pending = {}  # path -> 앞 단계까지 반영된 내용 (None = 아직 파일 없음)
 
-    # 먼저 고아부터 치웁니다. 안 그러면 이름 바꾼 항목이 두 벌로 남습니다.
-    살릴키 = set(data["incidents"])
+    # 먼저 고아부터 치웁니다. 지금 쓰는 것은 색인 하나뿐이라, 예전에 항목마다
+    # 하나씩 넣었던 블록은 전부 고아가 됩니다.
+    살릴키 = {INDEX_KEY}
     for _, _, path in surfaces:
         if not path.exists():
             continue
@@ -219,10 +243,9 @@ def plan(data, targets, root, scope="project", only=None):
         if 후 != 전:
             pending[path] = 후
             steps.append((path, 전, 후, "더 안 쓰는 항목을 뺐습니다"))
-    for key, inc in incidents_for(data, targets).items():
-        f = {"mode": "append", "body": body_for(inc)}
-        for _, _, path in surfaces:
-            yield_step(steps, pending, path, key, f)
+    f = {"mode": "append", "body": index_block(data)}
+    for _, _, path in surfaces:
+        yield_step(steps, pending, path, INDEX_KEY, f)
     return steps
 
 
@@ -438,6 +461,42 @@ def undo(data, root, scope="global", execute=False):
     return 0
 
 
+SKILL_DIR = Path.home() / ".claude" / "skills" / "오답노트"
+
+
+def skill_text(data):
+    """스킬 본문. **설명 한 줄만 항상 떠 있고 본문은 해당될 때만 불러옵니다.**
+    그래서 21건 전문을 넣어도 평소 토큰을 안 먹습니다."""
+    상황 = " · ".join(i["symptom"].replace("때", "때").split(",")[0][:28]
+                    for i in list(data["incidents"].values())[:8])
+    앞 = (
+        "---\n"
+        "name: 오답노트\n"
+        "description: >-\n"
+        "  남이 실제로 당한 사고 " + str(len(data["incidents"])) + "건. 키·계좌를 코드에 적으려 할 때,\n"
+        "  .env 를 커밋하려 할 때, 배포 설정을 건드릴 때, 검사를 새로 쓸 때,\n"
+        "  수집 결과를 덮어쓸 때, 영상·데이터를 이어붙일 때 이걸 먼저 본다.\n"
+        "  «이거 왜 이렇게 됐지» 하는 상황에서도 여기 같은 사고가 있는지 찾는다.\n"
+        "---\n\n"
+        "# 오답노트\n\n"
+        "전부 **실제로 있었던 일**이다. 일반론은 없다.\n"
+        "각 항목의 「이렇게 해도 안 잡히는 것」까지 읽어야 한다 — 그게 이 규칙의 한계다.\n\n"
+        "내 프로젝트에 이 사고가 있는지 실제로 찾으려면: `stackpack 검사`\n\n"
+        "---\n\n"
+    )
+    return 앞 + "\n\n---\n\n".join(body_for(i) for i in data["incidents"].values()) + "\n"
+
+
+def do_skill(data, install=True):
+    글 = skill_text(data)
+    (ROOT / "skill_vibe").mkdir(exist_ok=True)
+    (ROOT / "skill_vibe" / "SKILL.md").write_text(글, encoding="utf-8")
+    if install:
+        SKILL_DIR.mkdir(parents=True, exist_ok=True)
+        (SKILL_DIR / "SKILL.md").write_text(글, encoding="utf-8")
+    return 0
+
+
 def do_tidy(data, execute=False):
     """끝 표시가 없던 시절의 낡은 블록을 빼냅니다.
 
@@ -499,6 +558,7 @@ def do_auto(data, execute=True):
         print("AI 코딩 프로그램을 못 찾아서, 아는 자리 전부에 넣어 둡니다.")
     print()
 
+    do_skill(data, install=execute)
     바뀜 = False
     for key in 쓰는것:
         s = data["surfaces"][key]
@@ -515,6 +575,7 @@ def do_auto(data, execute=True):
     else:
         print(f"끝났습니다. 사고 {len(data['incidents'])}건을 넣었습니다.")
         print("이제 AI가 알아서 읽습니다. 더 하실 건 없습니다.")
+        print(f"(규칙 파일에는 **한 줄 색인만** 넣었습니다 — 전문은 필요할 때만 불러옵니다)")
         print()
         print(f"내 프로젝트에 이 사고가 있는지 찾아보려면:  {prog()} 검사")
     return 0
@@ -883,7 +944,7 @@ def do_selftest(data):
         do_apply(data, ["all"], tmp2, execute=True, quiet=True)
         for _, _, sp in surface_paths(data, "project", tmp2):
             글 = sp.read_text(encoding="utf-8")
-            i = 글.index(end_marker(next(iter(incidents))))
+            i = 글.index(end_marker(INDEX_KEY))
             j = 글.index("\n", i) + 1
             sp.write_text(글[:j] + "\n## 블록 사이에 내가 끼워 넣은 글\n" + 글[j:],
                           encoding="utf-8")
@@ -899,8 +960,8 @@ def do_selftest(data):
     #       남의 글을 지우면 안 됩니다.
     with tempfile.TemporaryDirectory() as td4:
         tmp4 = Path(td4)
-        키 = next(iter(incidents))
-        본문 = body_for(incidents[키]).rstrip("\n")
+        키 = INDEX_KEY
+        본문 = index_block(data).rstrip("\n")
         옛것 = legacy_block(키, 본문)
         남의것 = f"\n{marker(키)}-비슷한거\n내가 쓴 글\n"
         for _, _, sp in surface_paths(data, "project", tmp4):
@@ -928,7 +989,7 @@ def do_selftest(data):
             글 = sp.read_text(encoding="utf-8")
             assert "옛날에쓰던항목" not in 글, "고아 블록이 안 치워졌습니다"
             assert "내 글" in 글, "고아를 치우다 사람 글을 지웠습니다"
-            assert marker(next(iter(incidents))) in 글, "치우기만 하고 새로 안 넣었습니다"
+            assert marker(INDEX_KEY) in 글, "치우기만 하고 새로 안 넣었습니다"
         undo(data, tmp5, "project", execute=True)
         for _, _, sp in surface_paths(data, "project", tmp5):
             남은 = sp.read_text(encoding="utf-8") if sp.exists() else ""
@@ -1010,6 +1071,19 @@ def do_selftest(data):
     #        붙이지 않는가 — 윈도우에서는 `#` 이 주석이 아니라 인자가 됩니다.
     cmd = _guard_cmd()
     assert "#" not in cmd, f"훅 명령에 주석이 붙었습니다 (윈도우에서 깨집니다): {cmd}"
+
+    # 11-4b. 규칙 파일에 들어가는 색인이 **짧아야** 합니다. 전문을 매 세션 주입하면
+    #         토큰만 먹고 안 읽힙니다 — 재원이 지적한 바로 그 문제입니다.
+    색인 = index_block(data)
+    assert len(색인.splitlines()) <= len(incidents) + 10, \
+        f"색인이 {len(색인.splitlines())}줄입니다 — 전문이 새어 들어갔습니다"
+    for 표 in ("실제로 있었던 일", "이렇게 해도 안 잡히는 것"):
+        assert 표 not in 색인, f"색인에 전문({표})이 들어갔습니다"
+    # 그리고 스킬에는 전문이 다 있어야 합니다
+    스킬 = skill_text(data)
+    for k, inc in incidents.items():
+        assert inc["name"] in 스킬, f"스킬에 {k} 가 빠졌습니다"
+    assert 스킬.startswith("---\nname: "), "스킬에 머리말이 없습니다"
 
     # 11-5. 문서에 적은 사고 건수가 실제와 맞는가.
     #        P4 가 바로 이것입니다 — 손으로 맞춘 숫자는 반드시 어긋납니다.
