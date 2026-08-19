@@ -1,0 +1,71 @@
+name: 내 사용법 제출
+description: 코딩·바이브코딩을 이렇게 쓰고 있다 — 방법 하나를 알려주세요
+title: "[사용법] "
+labels: ["사용법-제출", "제보됨"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        인스타 DM·카톡·모임에서 들은 이야기도 **여기로 다시 내주세요.**
+        창구는 여럿이지만 **입구는 여기 하나**입니다. 여기 아닌 곳으로 온 것은
+        저장소에 올리지 않습니다 (공개할 권리를 확보할 수 없어서입니다).
+
+  - type: input
+    id: 한줄
+    attributes:
+      label: 한 줄 요약
+      description: 이 방법이 뭘 해주는지 한 문장으로
+      placeholder: "예) 커밋 전에 훅으로 테스트를 자동으로 돌려서 깨진 커밋을 막는다"
+    validations:
+      required: true
+
+  - type: textarea
+    id: 절차
+    attributes:
+      label: 실제로 하는 순서
+      description: 남이 그대로 따라 할 수 있게. 명령어·설정 파일 내용이 있으면 그대로 붙여주세요.
+    validations:
+      required: true
+
+  - type: input
+    id: 환경
+    attributes:
+      label: 어디서 쓰나요
+      placeholder: "예) Claude Code / Windows 11 / Python"
+    validations:
+      required: true
+
+  - type: input
+    id: 기간
+    attributes:
+      label: 얼마나 써봤나요
+      description: 표본을 밝히기 위해 필요합니다. "한 번 해봄"도 그대로 적어주세요.
+      placeholder: "예) 2주째 매일"
+    validations:
+      required: true
+
+  - type: textarea
+    id: 안좋은점
+    attributes:
+      label: 이 방법의 단점 / 안 맞는 경우
+      description: 없으면 "모르겠음". **단점이 안 적힌 제출은 채택하지 않습니다.**
+    validations:
+      required: true
+
+  - type: input
+    id: 표기이름
+    attributes:
+      label: 표기할 이름
+      description: 채택되면 이 이름으로 출처를 남깁니다. 익명을 원하면 "익명".
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: 동의
+    attributes:
+      label: 공개 동의
+      options:
+        - label: 이 내용이 MIT 라이선스로 공개 저장소에 실리는 것에 동의합니다.
+          required: true
+        - label: 회사 기밀·API 키·개인정보가 들어 있지 않은지 확인했습니다.
+          required: true

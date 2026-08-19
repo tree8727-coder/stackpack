@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 버그 · 설치 안 됨
+    url: https://github.com/tree8727-coder/stackpack/issues/new
+    about: 빈 이슈로 그냥 적어주세요.
