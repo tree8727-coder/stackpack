@@ -9,6 +9,7 @@
     {prog} apply all             지금 폴더에 적용 미리보기 (아무것도 안 바꿈)
     {prog} apply all --yes       지금 폴더에 실제로 적용
     {prog} apply all --global --yes   전역에 한 번만 — 모든 프로젝트에 자동 적용
+    {prog} 검사                   내 프로젝트에 이 사고가 있는지 찾기
     {prog} where                 어느 도구의 어느 파일에 놓이는지
     {prog} sync --yes            최신으로 당겨서 전역에 다시 얹기 (스케줄러용)
     {prog} selftest              데이터 규율 + 안전장치 검사
@@ -121,19 +122,50 @@ def validate(data):
     selftest 가 쓰는 것과 같은 검사입니다 — 두 벌로 만들지 않았습니다.
     """
     assert data.get("surfaces"), "surfaces 가 없습니다"
-    for k, r in data.get("recipes", {}).items():
-        assert r.get("cons", "").strip(), f"{k}: 단점(cons)이 비었습니다"
-        assert r.get("status") in data["statuses"], f"{k}: 모르는 status"
-        e = r.get("evidence") or {}
+    for k, inc in data.get("incidents", {}).items():
+        for 칸 in ("id", "name", "symptom", "story", "blind"):
+            assert str(inc.get(칸, "")).strip(), f"{k}: {칸} 이 비었습니다"
+        assert inc.get("fix"), f"{k}: fix(그래서 뭘 하나)가 비었습니다"
+        assert inc.get("status") in data["statuses"], f"{k}: 모르는 status"
+        e = inc.get("evidence") or {}
         assert e.get("users", 0) >= 1 and e.get("sources"), f"{k}: 근거가 없습니다"
-        for f in r.get("files", []):
-            assert f.get("to") == "rules", f"{k}: 모르는 to '{f.get('to')}'"
-            assert f.get("mode") in ("create", "append"), f"{k}: 모르는 mode"
     return data
 
 
 def marker(key):
     return f"<!-- vibe:{key} -->"
+
+
+# 우리가 넣은 블록을 통째로 알아보는 눈. 이름이 무엇이든 잡습니다.
+# 항목 이름이 바뀌면 옛 블록이 고아로 남는데, 그게 남의 컴퓨터에 영원히
+# 쌓이면 안 됩니다. 시작·끝 표시는 우리가 쓴 것이라 경계가 확실합니다.
+BLOCK_RE = re.compile(r"\n?<!-- vibe:(?P<k>[^>]+?) -->.*?<!-- /vibe:(?P=k) -->\n?", re.S)
+
+
+def strip_orphans(text, 살릴키):
+    """카탈로그에 더 없는 항목의 블록을 빼냅니다. 살릴 것은 그대로 둡니다."""
+    def 판정(m):
+        return m.group(0) if m.group("k") in 살릴키 else "\n"
+    return BLOCK_RE.sub(판정, text)
+
+
+def body_for(inc):
+    """AI 에게 갈 글을 항목에서 **만들어냅니다.** 손으로 적지 않습니다.
+
+    증상이 맨 앞입니다. AI 는 규칙("검사는 부숴봐라")을 못 알아봅니다.
+    "지금 이런 걸 하려는 참이다" 라는 상황이 적혀 있어야 알아봅니다.
+    """
+    줄 = [f"## [{inc['id']}] {inc['name']}", ""]
+    줄.append(f"**이럴 때 해당된다** — {inc['symptom']}")
+    줄.append("")
+    줄.append(f"**실제로 있었던 일** — {' '.join(inc['story'].split())}")
+    줄.append("")
+    줄.append("**그래서 이렇게 한다**")
+    for f in inc["fix"]:
+        줄.append(f"- {' '.join(f.split())}")
+    줄.append("")
+    줄.append(f"**이렇게 해도 안 잡히는 것** — {' '.join(inc['blind'].split())}")
+    return "\n".join(줄)
 
 
 def legacy_block(key, body):
@@ -152,14 +184,14 @@ def end_marker(key):
     return f"<!-- /vibe:{key} -->"
 
 
-def recipes_for(data, targets):
+def incidents_for(data, targets):
     if list(targets) == ["all"]:
-        return {k: v for k, v in data["recipes"].items() if v["status"] == "검증됨"}
+        return {k: v for k, v in data["incidents"].items() if v["status"] == "검증됨"}
     out = {}
     for t in targets:
-        if t not in data["recipes"]:
+        if t not in data["incidents"]:
             raise KeyError(t)
-        out[t] = data["recipes"][t]
+        out[t] = data["incidents"][t]
     return out
 
 
@@ -173,11 +205,21 @@ def plan(data, targets, root, scope="project", only=None):
     surfaces = surface_paths(data, scope, root, only)
     steps = []
     pending = {}  # path -> 앞 단계까지 반영된 내용 (None = 아직 파일 없음)
-    for key, r in recipes_for(data, targets).items():
-        for f in r.get("files", []):
-            assert f.get("to") == "rules", f"{key}: 모르는 to '{f.get('to')}'"
-            for _, _, path in surfaces:
-                yield_step(steps, pending, path, key, f)
+
+    # 먼저 고아부터 치웁니다. 안 그러면 이름 바꾼 항목이 두 벌로 남습니다.
+    살릴키 = set(data["incidents"])
+    for _, _, path in surfaces:
+        if not path.exists():
+            continue
+        전 = path.read_text(encoding="utf-8")
+        후 = strip_orphans(전, 살릴키)
+        if 후 != 전:
+            pending[path] = 후
+            steps.append((path, 전, 후, "더 안 쓰는 항목을 뺐습니다"))
+    for key, inc in incidents_for(data, targets).items():
+        f = {"mode": "append", "body": body_for(inc)}
+        for _, _, path in surfaces:
+            yield_step(steps, pending, path, key, f)
     return steps
 
 
@@ -251,7 +293,7 @@ def do_apply(data, targets, root, execute=False, scope="project", only=None, qui
             path.write_text(after, encoding="utf-8")
 
     # steps 로 안 끝나는 것 — 사람이 해야 하는 절차
-    for key, r in recipes_for(data, targets).items():
+    for key, r in incidents_for(data, targets).items():
         if r.get("steps") and not quiet:
             print(f"\n[{key}] 이건 사람이 해야 합니다:")
             for s in r["steps"]:
@@ -271,12 +313,13 @@ def do_apply(data, targets, root, execute=False, scope="project", only=None, qui
 
 
 def do_list(data):
-    for key, r in data["recipes"].items():
-        e = r["evidence"]
-        print(f"\n{key}  [{r['status']}]  {e['users']}명 · 최장 {e['longest']}")
-        print(f"  {r['name']}")
-        print(f"  단점: {r['cons']}")
-    print(f"\n{len(data['recipes'])}개. 자세히: {prog()} show <키>")
+    print("\n지금 들어 있는 사고들 — 다 남이 실제로 당한 것입니다.\n")
+    for key, inc in data["incidents"].items():
+        검사 = "  (자동 검사 있음)" if inc.get("caught_by") else ""
+        print(f"  [{inc['id']}] {inc['name']}{검사}")
+        print(f"        {key}")
+    print(f"\n{len(data['incidents'])}건. 하나 자세히 보기: {prog()} 보기 <이름>")
+    print(f"내 프로젝트에 이 사고가 있나 찾아보기: {prog()} 검사")
     return 0
 
 
@@ -290,21 +333,14 @@ def do_where(data):
 
 
 def do_show(data, key):
-    r = data["recipes"][key]
-    e = r["evidence"]
-    print(f"{key}\n{'─' * 40}")
-    print(f"{r['name']}\n")
-    print(f"왜:   {r['why']}")
-    print(f"단점: {r['cons']}")
-    print(f"대상: {r['target']}")
-    print(f"근거: {e['users']}명 · 최장 {e['longest']} · 출처 {', '.join(e['sources'])}")
-    print(f"상태: {r['status']} — {data['statuses'][r['status']]}\n")
-    for f in r.get("files", []):
-        print(f"[{f['path']}] ({f['mode']})")
-        print("\n".join("  " + l for l in f["body"].rstrip("\n").splitlines()))
-        print()
-    for s in r.get("steps", []):
-        print(f"  - {s}")
+    inc = data["incidents"][key]
+    e = inc["evidence"]
+    print()
+    print(body_for(inc))
+    print()
+    if inc.get("caught_by"):
+        print(f"이 사고는 자동으로 찾아낼 수 있습니다: {prog()} 검사")
+    print(f"출처 {', '.join(e['sources'])} · {inc['status']} — {data['statuses'][inc['status']]}")
     return 0
 
 
@@ -372,16 +408,10 @@ def undo(data, root, scope="global", execute=False):
             continue
         before = path.read_text(encoding="utf-8")
         after = before
-        for key, r in data["recipes"].items():
-            s, e = marker(key), end_marker(key)
-            while s in after and e in after:
-                i, j = after.index(s), after.index(e) + len(e)
-                if j < i:            # 짝이 안 맞으면 건드리지 않습니다
-                    break
-                after = after[:i] + after[j:]
-            for f in r.get("files", []):   # 끝 표시가 없던 시절 것
-                옛것 = legacy_block(key, f["body"].rstrip("\n"))
-                after = after.replace(옛것, "")
+        # 이름을 가리지 않고 우리가 넣은 블록을 전부 뺍니다. 옛 이름도 같이 나갑니다.
+        after = BLOCK_RE.sub("\n", after)
+        for key, r in data["incidents"].items():   # 끝 표시가 없던 시절 것
+            after = after.replace(legacy_block(key, body_for(r).rstrip("\n")), "")
         after = after.replace("\n\n\n", "\n\n").strip("\n")
         after = after + "\n" if after else ""
         if after == before:
@@ -417,22 +447,24 @@ def do_auto(data, execute=True):
         print("AI 코딩 프로그램을 못 찾아서, 아는 자리 전부에 넣어 둡니다.")
     print()
 
-    총 = 0
+    바뀜 = False
     for key in 쓰는것:
         s = data["surfaces"][key]
         path = Path(s["global"]).expanduser()
         if execute:
             path.parent.mkdir(parents=True, exist_ok=True)
         steps = plan(data, ["all"], ROOT, "global", key)
-        총 += sum(1 for _, b, a, _ in steps if b != a)
+        바뀜 = 바뀜 or any(b != a for _, b, a, _ in steps)
         do_apply(data, ["all"], ROOT, execute=execute, scope="global", only=key, quiet=True)
 
     print()
-    if 총 == 0:
+    if not 바뀜:
         print("이미 다 돼 있습니다. 아무것도 안 했습니다.")
     else:
-        print(f"끝났습니다. 방법 {총}개를 넣었습니다.")
+        print(f"끝났습니다. 사고 {len(data['incidents'])}건을 넣었습니다.")
         print("이제 AI가 알아서 읽습니다. 더 하실 건 없습니다.")
+        print()
+        print(f"내 프로젝트에 이 사고가 있는지 찾아보려면:  {prog()} 검사")
     return 0
 
 
@@ -507,6 +539,21 @@ def ensure_schedule():
     print(f"필요 없으면: {prog()} 자동 끄기")
 
 
+def do_check(target="."):
+    """오답노트의 사고를 **내 프로젝트에서 실제로 찾습니다.**
+
+    규칙을 알려주는 것과 "당신 프로젝트 이 줄에 그 사고가 있습니다" 라고
+    말해주는 것은 다릅니다. 뒤쪽이 훨씬 셉니다.
+    """
+    try:
+        import check
+    except ImportError:
+        print("검사기를 못 찾았습니다. 저장소에서 받아 쓰시면 됩니다:")
+        print("  git clone https://github.com/tree8727-coder/stackpack")
+        return 1
+    return check.main([str(Path(target).resolve())])
+
+
 def do_auto_cmd(onoff):
     if onoff in ("끄기", "off"):
         schedule_off()
@@ -531,16 +578,36 @@ def do_auto_cmd(onoff):
 def do_selftest(data):
     import tempfile
 
-    recipes, statuses = data["recipes"], data["statuses"]
+    incidents, statuses = data["incidents"], data["statuses"]
 
-    # 1. 데이터 규율 — 단점 없는 방법, 근거 없는 방법은 실을 수 없습니다
-    for k, r in recipes.items():
-        assert r.get("cons", "").strip(), f"{k}: 단점(cons)이 비었습니다"
-        assert r.get("status") in statuses, f"{k}: 모르는 status '{r.get('status')}'"
-        e = r.get("evidence") or {}
-        assert e.get("users", 0) >= 1, f"{k}: evidence.users 가 없습니다"
-        assert e.get("sources"), f"{k}: evidence.sources 가 비었습니다"
-        assert r.get("files") or r.get("steps"), f"{k}: 하는 게 아무것도 없습니다"
+    # 1. 데이터 규율 — validate 와 같은 함수를 씁니다(두 벌로 안 만듭니다)
+    validate(data)
+    번호 = [inc["id"] for inc in incidents.values()]
+    assert len(번호) == len(set(번호)), f"사고 번호가 겹칩니다: {번호}"
+
+    # 1-2. 증상이 규칙문이 아니라 **상황**인지. "~해라" 로 끝나면 AI 가 못 알아봅니다.
+    for k, inc in incidents.items():
+        s = inc["symptom"].strip()
+        assert not s.endswith(("한다", "해라", "하라", "않는다")), \
+            f"{k}: symptom 이 규칙문입니다 — 「~하려 할 때」 같은 상황으로 적으세요"
+        assert "때" in s or "경우" in s, f"{k}: symptom 에 언제인지가 없습니다"
+
+    # 1-3. 만들어낸 본문에 네 칸이 다 들어가는지
+    for k, inc in incidents.items():
+        b = body_for(inc)
+        for 표 in ("이럴 때 해당된다", "실제로 있었던 일", "그래서 이렇게 한다",
+                   "이렇게 해도 안 잡히는 것"):
+            assert 표 in b, f"{k}: 만들어낸 글에 「{표}」 가 없습니다"
+
+    # 1-4. caught_by 가 진짜 있는 검사를 가리키는지. 없는 검사를 약속하면 안 됩니다.
+    try:
+        import check as _check
+        있는검사 = {f.__name__ for f in _check.CHECKS}
+        for k, inc in incidents.items():
+            if c := inc.get("caught_by"):
+                assert c in 있는검사, f"{k}: 없는 검사를 가리킵니다 — {c}"
+    except ImportError:
+        pass
 
     # 2. '최적' 이라고 쓰지 않는다는 규율을 기계로 못박습니다
     text = VIBE.read_text(encoding="utf-8")
@@ -620,13 +687,15 @@ def do_selftest(data):
         assert 금지 not in src.replace(f'"{금지}"', ""), f"인증서 검증을 끄는 코드: {금지}"
     validate(data)
     나쁜것 = {"statuses": data["statuses"], "surfaces": data["surfaces"],
-             "recipes": {"x": {"cons": "", "status": "검증됨",
-                               "evidence": {"users": 1, "sources": ["#1"]}}}}
+             "incidents": {"x": {"id": "X", "name": "n", "symptom": "s",
+                                 "story": "t", "blind": "", "fix": ["f"],
+                                 "status": "검증됨",
+                                 "evidence": {"users": 1, "sources": ["#1"]}}}}
     try:
         validate(나쁜것)
-        raise AssertionError("validate 가 단점 빈 방법을 통과시켰습니다")
+        raise AssertionError("validate 가 blind 빈 사고를 통과시켰습니다")
     except AssertionError as e:
-        assert "단점" in str(e), e
+        assert "blind" in str(e), e
 
     # 7-2. 되돌리기가 **남이 쓴 글은 안 지우고** 우리 것만 빼내는가.
     #      끝 표시가 없으면 "다음 표시까지" 를 지우게 되고, 그 사이에 사람이
@@ -639,7 +708,7 @@ def do_selftest(data):
         do_apply(data, ["all"], tmp2, execute=True, quiet=True)
         for _, _, sp in surface_paths(data, "project", tmp2):
             글 = sp.read_text(encoding="utf-8")
-            i = 글.index(end_marker(next(iter(recipes))))
+            i = 글.index(end_marker(next(iter(incidents))))
             j = 글.index("\n", i) + 1
             sp.write_text(글[:j] + "\n## 블록 사이에 내가 끼워 넣은 글\n" + 글[j:],
                           encoding="utf-8")
@@ -655,8 +724,8 @@ def do_selftest(data):
     #       남의 글을 지우면 안 됩니다.
     with tempfile.TemporaryDirectory() as td4:
         tmp4 = Path(td4)
-        키 = next(iter(recipes))
-        본문 = recipes[키]["files"][0]["body"].rstrip("\n")
+        키 = next(iter(incidents))
+        본문 = body_for(incidents[키]).rstrip("\n")
         옛것 = legacy_block(키, 본문)
         남의것 = f"\n{marker(키)}-비슷한거\n내가 쓴 글\n"
         for _, _, sp in surface_paths(data, "project", tmp4):
@@ -671,6 +740,25 @@ def do_selftest(data):
         for _, _, sp in surface_paths(data, "project", tmp4):
             남은 = sp.read_text(encoding="utf-8") if sp.exists() else ""
             assert "머리말" in 남은 and "내가 쓴 글" in 남은, "되돌리기가 남의 글을 지웠습니다"
+
+    # 7-2c. 이름이 바뀌어 카탈로그에서 사라진 항목(고아)이 남의 파일에 계속
+    #       쌓이면 안 됩니다. 적용할 때 치우고, 사람 글은 그대로 둡니다.
+    with tempfile.TemporaryDirectory() as td5:
+        tmp5 = Path(td5)
+        고아 = "\n<!-- vibe:옛날에쓰던항목 -->\n## 옛 내용\n<!-- /vibe:옛날에쓰던항목 -->\n"
+        for _, _, sp in surface_paths(data, "project", tmp5):
+            sp.write_text("내 글\n" + 고아, encoding="utf-8")
+        do_apply(data, ["all"], tmp5, execute=True, quiet=True)
+        for _, _, sp in surface_paths(data, "project", tmp5):
+            글 = sp.read_text(encoding="utf-8")
+            assert "옛날에쓰던항목" not in 글, "고아 블록이 안 치워졌습니다"
+            assert "내 글" in 글, "고아를 치우다 사람 글을 지웠습니다"
+            assert marker(next(iter(incidents))) in 글, "치우기만 하고 새로 안 넣었습니다"
+        undo(data, tmp5, "project", execute=True)
+        for _, _, sp in surface_paths(data, "project", tmp5):
+            남은 = sp.read_text(encoding="utf-8") if sp.exists() else ""
+            assert "vibe:" not in 남은, "되돌렸는데 블록이 남았습니다"
+            assert "내 글" in 남은, "되돌리기가 사람 글을 지웠습니다"
 
     # 7-3. 우리가 만든 빈 파일은 되돌릴 때 지웁니다 (쓰레기를 안 남깁니다)
     with tempfile.TemporaryDirectory() as td3:
@@ -714,9 +802,11 @@ def do_selftest(data):
         mod, fn = ep.split(":")
         assert mod.endswith(".vibe") and fn in globals(), f"진입점이 이상합니다: {ep}"
 
-    검증됨 = sum(1 for r in recipes.values() if r["status"] == "검증됨")
+    검증됨 = sum(1 for r in incidents.values() if r["status"] == "검증됨")
     도구 = ", ".join(s["name"] for s in data["surfaces"].values())
-    print(f"\n통과. 방법 {len(recipes)}개 (검증됨 {검증됨}) · 도구 {도구} · 확인 {age}일 전")
+    검사있음 = sum(1 for i in incidents.values() if i.get("caught_by"))
+    print(f"\n통과. 사고 {len(incidents)}건 (검증됨 {검증됨}, 자동검사 {검사있음}) "
+          f"· 도구 {도구} · 확인 {age}일 전")
     return 0
 
 
@@ -728,6 +818,7 @@ def do_selftest(data):
     "어디": "where", "어디에": "where",
     "갱신": "sync", "최신": "sync",
     "자동": "auto",
+    "검사": "check", "점검": "check",
 }
 
 
@@ -751,6 +842,8 @@ def main():
     sub.add_parser("list", help="어떤 방법들이 있나")
     sub.add_parser("where", help="어느 파일에 놓이는지")
     sub.add_parser("selftest", help="스스로 검사")
+    pc = sub.add_parser("check", help="내 프로젝트에서 이 사고들을 찾기")
+    pc.add_argument("dir", nargs="?", default=".", help="볼 폴더 (기본: 지금 폴더)")
     pu = sub.add_parser("undo", help="넣었던 것 전부 빼기")
     pu.add_argument("--yes", action="store_true", help="실제로 빼기")
     pau = sub.add_parser("auto", help="자동 갱신 켜기/끄기")
@@ -779,6 +872,8 @@ def main():
             return do_where(data)
         if a.cmd == "selftest":
             return do_selftest(data)
+        if a.cmd == "check":
+            return do_check(a.dir)
         if a.cmd == "show":
             return do_show(data, a.key)
         if a.cmd == "undo":
@@ -798,7 +893,7 @@ def main():
         return do_apply(data, a.targets or ["all"], root, execute=실행,
                         scope=scope, only=a.only)
     except KeyError as k:
-        print(f"그런 건 없습니다: {k}\n있는 것: {', '.join(data['recipes'])}")
+        print(f"그런 건 없습니다: {k}\n있는 것: {', '.join(data['incidents'])}")
         return 1
 
 

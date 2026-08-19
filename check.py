@@ -336,11 +336,13 @@ def selftest() -> int:
     return 0
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    # argv 를 받습니다. vibe.py 의 `검사` 명령이 이 함수를 그대로 부릅니다 —
+    # 검사 로직을 두 벌로 만들지 않으려는 것입니다(P5).
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("path", nargs="?", default=".", help="점검할 폴더 (기본: 지금 폴더)")
     ap.add_argument("--selftest", action="store_true", help="검사기 자체를 검사")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     if a.selftest:
         return selftest()

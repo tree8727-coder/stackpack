@@ -30,3 +30,5 @@ only-include = ["pkg"]
 "pkg/__init__.py" = "stackpack/__init__.py"
 "vibe.py" = "stackpack/vibe.py"
 "vibe.yaml" = "stackpack/vibe.yaml"
+"check.py" = "stackpack/check.py"
+"ERRORS.md" = "stackpack/ERRORS.md"
