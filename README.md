@@ -224,3 +224,24 @@ cd ..\stackpack; git worktree remove -f ..\stackpack-pages
 
 이 저장소의 코드와 문서는 **MIT**입니다 ([LICENSE](LICENSE)).
 소개하는 도구 31개는 전부 남이 만든 것이고 각자의 라이선스를 따릅니다 — [출처.md](출처.md).
+
+## PyPI 에 올리기
+
+토큰을 만들지 않습니다. **PyPI 가 깃허브를 직접 믿게** 해 두었습니다
+(`.github/workflows/publish.yml`). 토큰이 없으면 새어 나갈 토큰도 없습니다.
+
+처음 한 번만 PyPI 쪽에서 등록하면 됩니다.
+
+1. [pypi.org](https://pypi.org) 가입 → 2단계 인증 켜기
+2. [신뢰 게시자 추가](https://pypi.org/manage/account/publishing/) 에서 **«아직 없는 프로젝트»** 로 등록
+   - PyPI Project Name `stackpack`
+   - Owner `tree8727-coder` · Repository `stackpack`
+   - Workflow name `publish.yml` · Environment `pypi`
+3. 올릴 때
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+태그가 올라가면 검사를 먼저 돌리고, 통과해야 배포합니다.

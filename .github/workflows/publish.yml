@@ -1,0 +1,35 @@
+# 태그를 붙이면 PyPI 에 올라갑니다.
+#
+# 토큰을 만들지도, 어디에 저장하지도 않습니다. PyPI 의 «신뢰 게시자(Trusted
+# Publisher)» 를 쓰면 깃허브가 이 저장소에서 왔다는 것을 직접 증명합니다.
+# 토큰이 없으면 새어 나갈 토큰도 없습니다 (E8 과 같은 이유).
+#
+# 처음 한 번만 PyPI 에서 등록해야 합니다 — README 의 「PyPI 에 올리기」 참고.
+name: PyPI 배포
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  검사:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # 검사를 안 돌려 보고 밀지 않습니다 (racketon E14).
+      - run: uv run vibe.py selftest
+      - run: uv run check.py .
+
+  배포:
+    needs: 검사
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write        # 신뢰 게시자에 필요한 유일한 권한입니다
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build --wheel --sdist
+      - uses: pypa/gh-action-pypi-publish@release/v1
