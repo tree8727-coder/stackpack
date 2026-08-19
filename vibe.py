@@ -910,6 +910,20 @@ def do_selftest(data):
     번호 = [inc["id"] for inc in incidents.values()]
     assert len(번호) == len(set(번호)), f"사고 번호가 겹칩니다: {번호}"
 
+    # 1-1b. 「당연어」만 있는 사고는 정보가 0 입니다.
+    #        카페 글의 «커피» 처럼, 이 바닥에서 당연히 나오는 말만 있으면 아무것도
+    #        안 알려줍니다. 그래서 **고유한 것이 최소 하나** 있어야 합니다 —
+    #        숫자(시간·금액·건수) · 파일 이름 · 오류 문구 중 하나.
+    #        (달나루 회의록: 자동 생성 페이지가 얇으면 저품질로 분류된다 — 같은 방어선)
+    #        영문 식별자(inner_text, fly.toml)도 «고유한 것» 으로 봅니다 —
+    #        한국어 문장 안의 ASCII 토막은 거의 항상 그 사고에만 있는 이름입니다.
+    고유함 = re.compile(r"\d|[A-Za-z_.]{3,}|`[^`]+`|«[^»]+»")
+    for k, inc in incidents.items():
+        재료 = inc["story"] + " " + " ".join(inc["fix"])
+        assert 고유함.search(재료), (
+            f"{k}: 숫자도 파일 이름도 오류 문구도 없습니다 — "
+            "당연한 말만 있는 사고는 싣지 않습니다")
+
     # 1-2. 증상이 규칙문이 아니라 **상황**인지. "~해라" 로 끝나면 AI 가 못 알아봅니다.
     for k, inc in incidents.items():
         s = inc["symptom"].strip()
