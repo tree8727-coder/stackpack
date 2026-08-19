@@ -961,6 +961,22 @@ def do_selftest(data):
     cmd = _guard_cmd()
     assert "#" not in cmd, f"훅 명령에 주석이 붙었습니다 (윈도우에서 깨집니다): {cmd}"
 
+    # 11-5. 문서에 적은 사고 건수가 실제와 맞는가.
+    #        P4 가 바로 이것입니다 — 손으로 맞춘 숫자는 반드시 어긋납니다.
+    #        우리가 파는 규칙을 우리가 어기면 카탈로그 전체가 우스워집니다.
+    n = len(incidents)
+    for 문서 in ("README.md", "사용법.md", "pyproject.toml"):
+        f = ROOT / 문서
+        if not f.exists():
+            continue
+        글 = f.read_text(encoding="utf-8")
+        틀린것 = re.findall(r"사고 (\d+)건|사고 (\d+)건으로|(\d+)건 중 \d+건은", 글)
+        for 짝 in 틀린것:
+            for 숫자 in 짝:
+                if 숫자 and int(숫자) != n:
+                    raise AssertionError(
+                        f"{문서} 에 사고가 {숫자}건이라고 적혀 있는데 실제는 {n}건입니다")
+
     # 12. 배포 설정 — 여기가 어긋나면 남한테는 깨진 채로 나갑니다
     pyproject = ROOT / "pyproject.toml"
     if pyproject.exists():          # 배포판 안에는 없습니다
