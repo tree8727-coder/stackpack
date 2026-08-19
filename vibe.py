@@ -30,6 +30,7 @@ Claude Code 와 Google Antigravity 를 함께 봅니다. 도구마다 읽는 파
 
 import argparse
 import difflib
+import fnmatch
 import re
 import json
 import subprocess
@@ -160,7 +161,46 @@ def index_line(inc):
     return f"- **[{inc['id']}]** {inc['symptom']} → {' '.join(inc['fix'][0].split())}"
 
 
-def index_block(data):
+def 이_프로젝트에_해당되나(inc, 파일이름들):
+    """이 사고가 지금 프로젝트에 해당되는가. **파일 이름만 봅니다.**
+
+    내용은 안 읽고, 어디로도 안 보냅니다. 이 컴퓨터에서 «무엇을 넣을지» 를
+    좁히는 데만 씁니다. 좁힐수록 규칙 파일이 짧아지고 AI 가 실제로 읽습니다.
+    """
+    무늬 = inc.get("when")
+    if not 무늬:
+        return True                      # 표시가 없으면 어디서나 해당
+    for 무 in 무늬:
+        if 무 == "*":
+            return True
+        for 이름 in 파일이름들:
+            if fnmatch.fnmatch(이름, 무) or fnmatch.fnmatch(이름.lower(), 무.lower()):
+                return True
+    return False
+
+
+def 프로젝트_파일이름(root, 최대=4000):
+    """파일 «이름» 만 모읍니다. 내용은 안 봅니다."""
+    건너뛸것 = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist",
+              "build", ".next", "out", "site-packages"}
+    이름들 = []
+    for p_ in root.rglob("*"):
+        if len(이름들) >= 최대:
+            break
+        if any(part in 건너뛸것 for part in p_.parts):
+            continue
+        이름들.append(p_.name)
+    return 이름들
+
+
+def 해당되는_사고(data, root):
+    이름들 = 프로젝트_파일이름(root)
+    고른것 = {k: v for k, v in data["incidents"].items()
+            if 이_프로젝트에_해당되나(v, 이름들)}
+    return 고른것 or data["incidents"]     # 하나도 안 걸리면 전부 넣습니다
+
+
+def index_block(data, 고른것=None):
     """규칙 파일에는 **색인만** 넣습니다.
 
     전문 21건을 매 세션 통째로 주입하면 토큰만 먹고 안 읽힙니다.
@@ -170,7 +210,7 @@ def index_block(data):
     줄 = ["## 남이 이미 당한 사고 — 같은 걸 두 번 하지 않는다", ""]
     줄.append("아래 상황이 오면 **멈추고 해당 항목을 확인한다.** 전문은 `오답노트` 스킬에 있다.")
     줄.append("")
-    줄 += [index_line(i) for i in data["incidents"].values()]
+    줄 += [index_line(i) for i in (고른것 or data["incidents"]).values()]
     줄 += ["", f"전문 보기: `stackpack 보기 <항목>` · 내 프로젝트 점검: `stackpack 검사`"]
     return "\n".join(줄)
 
@@ -243,7 +283,9 @@ def plan(data, targets, root, scope="project", only=None):
         if 후 != 전:
             pending[path] = 후
             steps.append((path, 전, 후, "더 안 쓰는 항목을 뺐습니다"))
-    f = {"mode": "append", "body": index_block(data)}
+    # 프로젝트에 넣을 때는 그 프로젝트에 해당되는 것만. 전역은 전부 (어디서 쓸지 모름)
+    고른것 = None if scope == "global" else 해당되는_사고(data, root)
+    f = {"mode": "append", "body": index_block(data, 고른것)}
     for _, _, path in surfaces:
         yield_step(steps, pending, path, INDEX_KEY, f)
     return steps
@@ -494,6 +536,53 @@ def do_skill(data, install=True):
     if install:
         SKILL_DIR.mkdir(parents=True, exist_ok=True)
         (SKILL_DIR / "SKILL.md").write_text(글, encoding="utf-8")
+    return 0
+
+
+REPO = "https://github.com/tree8727-coder/stackpack"
+
+
+def do_send(data):
+    """제보를 **타이핑 없이** 보냅니다.
+
+    서버를 두지 않습니다. 서버를 두는 순간 「서버 없음」 이라는 이 프로그램의
+    가장 큰 장점이 사라집니다(폐쇄망 고객이 첫 조건으로 보는 것). 대신 로컬에
+    쌓인 기록으로 이슈 본문을 만들어 **브라우저에 미리 채워서** 엽니다.
+    사람이 할 일은 「제출」 한 번 누르는 것뿐입니다.
+
+    보내는 것: 사고 번호와 횟수뿐입니다. **파일 이름도 코드도 안 들어갑니다.**
+    """
+    import urllib.parse
+    import webbrowser
+
+    if not BLOCK_LOG.exists():
+        print("아직 막힌 게 없습니다. 뭔가 막히면 그때 보낼 게 생깁니다.")
+        return 0
+    센것 = {}
+    for line in BLOCK_LOG.read_text(encoding="utf-8").splitlines():
+        try:
+            센것[json.loads(line)["사고"]] = 센것.get(json.loads(line)["사고"], 0) + 1
+        except (json.JSONDecodeError, KeyError):
+            continue
+    이름 = {i["id"]: i["name"] for i in data["incidents"].values()}
+    줄 = [f"- {사고} {이름.get(사고, '')} — {n}번" for 사고, n in sorted(센것.items())]
+    본문 = ("스택팩이 제 컴퓨터에서 막은 횟수입니다.\n\n"
+          + "\n".join(줄)
+          + "\n\n---\n"
+          + "이 내용은 `stackpack 보내기` 가 만들었습니다. "
+          + "**사고 번호와 횟수뿐이고 파일 이름도 코드도 들어 있지 않습니다.**\n"
+          + "보내기 전에 위 내용을 직접 보고 계십니다.\n")
+
+    print("아래 내용으로 브라우저를 엽니다. 「제출」만 누르시면 됩니다.\n")
+    print(본문)
+    url = (f"{REPO}/issues/new?labels=" + urllib.parse.quote("막은기록")
+           + "&title=" + urllib.parse.quote("[기록] 막은 횟수")
+           + "&body=" + urllib.parse.quote(본문))
+    if len(url) > 8000:
+        print("(내용이 너무 길어 브라우저로 못 엽니다. 위 내용을 붙여넣어 주세요.)")
+        return 0
+    webbrowser.open(url)
+    print(f"\n열었습니다. 안 열렸으면 이 주소로:\n{url[:120]}...")
     return 0
 
 
@@ -961,7 +1050,8 @@ def do_selftest(data):
     with tempfile.TemporaryDirectory() as td4:
         tmp4 = Path(td4)
         키 = INDEX_KEY
-        본문 = index_block(data).rstrip("\n")
+        # 프로젝트 범위는 이제 «해당되는 것만» 넣으므로 기대값도 같은 방식으로 만듭니다
+        본문 = index_block(data, 해당되는_사고(data, tmp4)).rstrip("\n")
         옛것 = legacy_block(키, 본문)
         남의것 = f"\n{marker(키)}-비슷한거\n내가 쓴 글\n"
         for _, _, sp in surface_paths(data, "project", tmp4):
@@ -1079,6 +1169,12 @@ def do_selftest(data):
         f"색인이 {len(색인.splitlines())}줄입니다 — 전문이 새어 들어갔습니다"
     for 표 in ("실제로 있었던 일", "이렇게 해도 안 잡히는 것"):
         assert 표 not in 색인, f"색인에 전문({표})이 들어갔습니다"
+
+    # 11-4c. 프로젝트 감지는 **파일 이름만** 봅니다. 내용을 읽으면 안 됩니다.
+    import inspect as _ins
+    소스 = _ins.getsource(프로젝트_파일이름) + _ins.getsource(이_프로젝트에_해당되나)
+    for 금지 in ("read_text", "read_bytes", "open("):
+        assert 금지 not in 소스, f"프로젝트 감지가 파일 내용을 읽고 있습니다: {금지}"
     # 그리고 스킬에는 전문이 다 있어야 합니다
     스킬 = skill_text(data)
     for k, inc in incidents.items():
@@ -1147,6 +1243,7 @@ def do_selftest(data):
     "관문": "hook", "차단": "hook",
     "성적표": "report", "기록": "report",
     "정리": "tidy",
+    "보내기": "send", "제보": "send",
 }
 
 
@@ -1164,6 +1261,7 @@ def main():
                 print("그리고 **막습니다** — AI 가 키를 코드에 적거나 .env 를 올리려 하면")
                 print("그 자리에서 멈춥니다. 사람이 뭘 누를 필요 없습니다.")
                 print(f"막은 횟수 보기: {prog()} 성적표   ·   끄기: {prog()} 관문 끄기")
+        print(f"기록 보내기(타이핑 없이): {prog()} 보내기")
         ensure_schedule()
         return rc
 
@@ -1184,6 +1282,7 @@ def main():
     ph = sub.add_parser("hook", help="관문 켜기/끄기")
     ph.add_argument("onoff", nargs="?", default="상태")
     sub.add_parser("report", help="지금까지 몇 번 막았나")
+    sub.add_parser("send", help="막은 기록을 이슈로 보내기 (타이핑 없이)")
     pt = sub.add_parser("tidy", help="낡은 형식 항목 빼기")
     pt.add_argument("--yes", action="store_true")
     sub.add_parser("guard", help="(훅이 부르는 것)")
@@ -1232,6 +1331,8 @@ def main():
             return do_hook_cmd(a.onoff)
         if a.cmd == "report":
             return do_report(data)
+        if a.cmd == "send":
+            return do_send(data)
         if a.cmd == "tidy":
             return do_tidy(data, execute=a.yes)
         if a.only and a.only not in data["surfaces"]:
