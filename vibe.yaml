@@ -27,7 +27,7 @@ recipes:
     cons: 매번 두 번 돌려야 해서 느리다. 부수기 어려운 단언(타이밍·네트워크)에서는 생략하게 된다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "3개월", sources: ["본인 — 라켓온"] }
+    evidence: { users: 1, longest: "3개월", sources: ["#1 본인 — 라켓온"] }
     files:
       - path: CLAUDE.md
         mode: append
@@ -43,7 +43,7 @@ recipes:
     cons: 급할 때 결과물 한 줄 고치는 게 제일 빠른데 그걸 못 하게 막는다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — stackpack index.html"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#2 본인 — stackpack index.html"] }
     files:
       - path: CLAUDE.md
         mode: append
@@ -58,7 +58,7 @@ recipes:
     cons: 두 번 타이핑해야 한다. 익숙해지면 --yes를 반사적으로 붙이게 되는 부작용이 있다.
     target: CLI 만들 때
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — build.py install"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#3 본인 — build.py install"] }
     files:
       - path: CLAUDE.md
         mode: append
@@ -74,7 +74,7 @@ recipes:
     cons: 사람이 날짜를 갱신해야 한다. 날짜만 고치고 실제 확인은 안 하는 부정행위가 가능하다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — sell.yaml checked"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#4 본인 — sell.yaml checked"] }
     files:
       - path: CLAUDE.md
         mode: append
@@ -90,7 +90,7 @@ recipes:
     cons: 검사 코드가 늘어난다. 숫자가 자주 바뀌는 초기에는 빌드가 자꾸 빨개진다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — build.py selftest"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#5 본인 — build.py selftest"] }
     files:
       - path: CLAUDE.md
         mode: append
@@ -105,7 +105,7 @@ recipes:
     cons: 파생 규칙이 한 겹 더 생겨서 처음 읽는 사람에게는 덜 직관적이다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — 콤보 설치명령 파생"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#6 본인 — 콤보 설치명령 파생"] }
     files:
       - path: CLAUDE.md
         mode: append
@@ -120,7 +120,7 @@ recipes:
     cons: 실험 중에는 커밋할 만큼 정리가 안 된 상태가 많다. stash 를 자주 쓰게 된다.
     target: git + 코딩 에이전트
     status: 검증됨
-    evidence: { users: 1, longest: "3개월", sources: ["본인"] }
+    evidence: { users: 1, longest: "3개월", sources: ["#7 본인"] }
     files:
       - path: CLAUDE.md
         mode: append
@@ -135,7 +135,7 @@ recipes:
     cons: 입구가 둘이면 유지보수도 둘이다. 둘이 갈라지지 않게 하려면 같은 로직에서 파생시켜야 한다.
     target: 도구 배포할 때
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — app.py"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#8 본인 — app.py"] }
     steps:
       - "터미널 없이 열리는 정적 페이지 하나를 만든다(더블클릭 가능한 html)."
       - "그 페이지의 명령은 CLI와 **같은 함수**에서 만든다. 다시 적지 않는다."
@@ -146,7 +146,7 @@ recipes:
     cons: 이음매가 아닌 곳의 문제(중간 구간 품질 저하)는 이 방법으로 안 잡힌다.
     target: 영상·문서·데이터 병합
     status: 검증됨
-    evidence: { users: 1, longest: "1주", sources: ["본인 — 0814 concat"] }
+    evidence: { users: 1, longest: "1주", sources: ["#9 본인 — 0814 concat"] }
     steps:
       - "이어붙인 지점의 앞뒤 몇 초·몇 줄만 뽑아 따로 본다."
       - "이음매 목록을 파일로 남긴다. 다음 번에 같은 곳을 먼저 본다."
@@ -157,7 +157,7 @@ recipes:
     cons: 매번 새로 짜는 게 낭비처럼 느껴진다. 실제로 반복되는 작업이면 이 규칙이 틀렸다.
     target: 일회성 작업
     status: 검증됨
-    evidence: { users: 1, longest: "2주", sources: ["본인 — 0814 기존 스크립트"] }
+    evidence: { users: 1, longest: "2주", sources: ["#10 본인 — 0814 기존 스크립트"] }
     steps:
       - "일회성 스크립트는 작업 폴더 안에 두고, 공용 폴더로 승격시키지 않는다."
       - "세 번째로 같은 걸 짜게 되면 그때 승격시킨다."
