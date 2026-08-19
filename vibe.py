@@ -808,6 +808,7 @@ GUARD_MARKS = ("stackpack", "guard.py")
 def is_ours(h):
     return any(m in json.dumps(h, ensure_ascii=False) for m in GUARD_MARKS)
 BLOCK_LOG = Path.home() / ".stackpack" / "막은기록.jsonl"
+REVERT_LOG = Path.home() / ".stackpack" / "되돌린것.jsonl"
 
 
 def _guard_cmd():
@@ -896,7 +897,20 @@ def do_report(data):
     for 사고, n in sorted(센것.items(), key=lambda x: -x[1]):
         print(f"  {n:>3}번   [{사고}] {이름.get(사고, '')}")
     print(f"\n마지막: {최근}")
-    print(f"기록은 이 컴퓨터에만 있습니다 ({BLOCK_LOG}). 아무 데도 안 보냅니다.")
+
+    # 되돌림 — 아직 이름 없는 사고의 후보입니다
+    if REVERT_LOG.exists():
+        되돌림 = [json.loads(l) for l in REVERT_LOG.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if 되돌림:
+            확장자별 = {}
+            for r in 되돌림:
+                확장자별[r["확장자"]] = 확장자별.get(r["확장자"], 0) + 1
+            print(f"\n그리고 AI 가 쓴 것을 곧바로 되돌린 적이 {len(되돌림)}번 있습니다.")
+            for e, n in sorted(확장자별.items(), key=lambda x: -x[1])[:5]:
+                print(f"  {n:>3}번   {e}")
+            print("  → 여기가 «아직 이름 없는 사고» 가 숨어 있는 자리입니다.")
+            print("     내용은 안 남깁니다. 무엇을 되돌렸는지가 아니라 «얼마나 자주» 만 셉니다.")
+    print(f"\n기록은 이 컴퓨터에만 있습니다 ({BLOCK_LOG.parent}). 아무 데도 안 보냅니다.")
     return 0
 
 
@@ -923,6 +937,12 @@ def do_selftest(data):
         assert 고유함.search(재료), (
             f"{k}: 숫자도 파일 이름도 오류 문구도 없습니다 — "
             "당연한 말만 있는 사고는 싣지 않습니다")
+
+    # 1-1c. 표본이 늘고 있는지 눈에 보이게 합니다. 전부 users:1 이면 그건 한 사람의
+    #        기록이지 카탈로그가 아닙니다. (막지는 않습니다 — 사실을 감추면 더 나쁩니다)
+    혼자 = sum(1 for i in incidents.values() if i["evidence"]["users"] == 1)
+    if 혼자 == len(incidents):
+        print(f"  ! 사고 {len(incidents)}건이 전부 users:1 입니다 — 아직 한 사람의 기록입니다")
 
     # 1-2. 증상이 규칙문이 아니라 **상황**인지. "~해라" 로 끝나면 AI 가 못 알아봅니다.
     for k, inc in incidents.items():
@@ -1175,6 +1195,35 @@ def do_selftest(data):
     #        붙이지 않는가 — 윈도우에서는 `#` 이 주석이 아니라 인자가 됩니다.
     cmd = _guard_cmd()
     assert "#" not in cmd, f"훅 명령에 주석이 붙었습니다 (윈도우에서 깨집니다): {cmd}"
+
+    # 11-4d. 훅은 **사용자 전역에만** 씁니다. 프로젝트 설정에 훅을 심으면,
+    #        그 저장소를 여는 남의 AI 가 우리 코드를 실행하게 됩니다.
+    #        2026-02 에 바로 그 경로로 CVE 가 났습니다(.claude/settings.json 훅).
+    assert SETTINGS == Path.home() / ".claude" / "settings.json", \
+        f"설정 경로가 사용자 전역이 아닙니다: {SETTINGS}"
+    # 찾는 글자를 이어붙여 만듭니다. 그대로 적으면 이 검사 자신이 걸립니다
+    # — E27 을 여기서 또 밟았습니다.
+    src_v = Path(__file__).read_text(encoding="utf-8")
+    for 조각 in (("settings.local", ".json"), ("Path.cwd()", ' / ".claude"')):
+        금지 = "".join(조각)
+        assert src_v.count(금지) <= 1, f"프로젝트 설정을 건드리는 코드가 있습니다: {금지}"
+
+    # 11-4e. 되돌림 기록에 **원문이 안 들어가는지**. 들어가면 그 파일이 새는 순간 코드가 샙니다.
+    g2 = None
+    try:
+        from . import guard as g2
+    except ImportError:
+        try:
+            import guard as g2
+        except ImportError:
+            pass
+    if g2 is not None:
+        import inspect as _i2
+        기록소스 = _i2.getsource(g2.쓴것_기록) + _i2.getsource(g2.되돌림_확인)
+        for 조각 in (("cont", "ent"), ("new_", "string"), ("old_", "string")):
+            금지 = "".join(조각)
+            assert 금지 not in 기록소스, f"되돌림 기록이 원문을 남기려 합니다: {금지}"
+        assert "지문(" in 기록소스, "되돌림 기록이 해시를 안 씁니다"
 
     # 11-4b. 규칙 파일에 들어가는 색인이 **짧아야** 합니다. 전문을 매 세션 주입하면
     #         토큰만 먹고 안 읽힙니다 — 재원이 지적한 바로 그 문제입니다.

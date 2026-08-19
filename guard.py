@@ -28,6 +28,15 @@ from pathlib import Path
 
 LOG = Path.home() / ".stackpack" / "막은기록.jsonl"
 
+# AI 가 쓴 것을 사람이 곧 되돌리면, 그건 «AI 가 여기서 틀렸다» 는 가장 강한 신호입니다.
+# 사람이 한 글자도 안 써도 잡힙니다. 이게 새 사고를 자동으로 찾는 유일한 길입니다.
+#
+# **내용은 저장하지 않습니다.** 글자를 해시로 바꿔 «같은 것인가» 만 봅니다.
+# 해시로는 원문을 되살릴 수 없습니다 — 그래서 이 파일이 새어도 코드가 새지 않습니다.
+WRITES = Path.home() / ".stackpack" / "쓴것.jsonl"
+REVERTS = Path.home() / ".stackpack" / "되돌린것.jsonl"
+되돌림_시간 = 60 * 60          # 이 안에 지워지면 «되돌림» 으로 봅니다
+
 # 위험 → 막음, 주의 → 사람에게 물어봄
 DENY, ASK = "deny", "escalate"
 
@@ -125,6 +134,48 @@ def 기록(사고, tool, name):
         pass
 
 
+def 지문(글):
+    """글자를 해시로. 원문은 남기지 않습니다."""
+    import hashlib
+    return hashlib.sha256(" ".join(글.split()).encode()).hexdigest()[:16]
+
+
+def 쓴것_기록(tool, name, 글):
+    try:
+        WRITES.parent.mkdir(parents=True, exist_ok=True)
+        with WRITES.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": datetime.now().isoformat(timespec="seconds"),
+                                "지문": 지문(글), "줄수": len(글.splitlines()),
+                                "확장자": Path(name).suffix or "(없음)"},
+                               ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def 되돌림_확인(name, 사라지는글):
+    """방금 AI 가 쓴 것이 지워지는 중인가. 맞으면 기록만 하고 막지는 않습니다."""
+    if not WRITES.exists() or not 사라지는글.strip():
+        return
+    찾는지문 = 지문(사라지는글)
+    이제 = datetime.now()
+    try:
+        for line in reversed(WRITES.read_text(encoding="utf-8").splitlines()[-300:]):
+            r = json.loads(line)
+            if r["지문"] != 찾는지문:
+                continue
+            지난초 = (이제 - datetime.fromisoformat(r["t"])).total_seconds()
+            if 0 <= 지난초 <= 되돌림_시간:
+                REVERTS.parent.mkdir(parents=True, exist_ok=True)
+                with REVERTS.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(
+                        {"t": 이제.isoformat(timespec="seconds"),
+                         "확장자": r["확장자"], "줄수": r["줄수"],
+                         "몇초만에": int(지난초)}, ensure_ascii=False) + "\n")
+            return
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -138,6 +189,16 @@ def main():
         fp = str(ti.get("file_path", ""))
         if "stackpack" in fp or Path(fp).name in {"vibe.yaml", "check.py", "guard.py", "ERRORS.md"}:
             return 0
+
+        # 되돌림 감지 — 막는 것과 별개로 항상 봅니다
+        try:
+            if tool in ("Edit", "NotebookEdit") and ti.get("old_string"):
+                되돌림_확인(fp, str(ti["old_string"]))
+            _, 쓰는글 = 볼_내용(tool, ti)
+            if tool in ("Write", "Edit", "NotebookEdit") and 쓰는글:
+                쓴것_기록(tool, fp, 쓰는글)
+        except Exception:
+            pass
 
         결과 = 판정(tool, ti)
         if 결과 is None:
