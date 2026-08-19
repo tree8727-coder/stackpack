@@ -38,13 +38,34 @@ stack.yaml  ←  유일한 진실. 손으로만 편집.
 `vibe` 는 **아무것도 설치하지 않습니다.** 도구를 안 깔아도 됩니다.
 사람들이 실제로 쓰는 방법을 `CLAUDE.md` 같은 파일로 내 프로젝트에 얹어줄 뿐입니다.
 
-**한 번만 깔고 끝내려면** (권장) — `~/.claude/CLAUDE.md` 는 Claude Code 가 **모든
-프로젝트에서 자동으로 읽는** 파일입니다. 여기 넣으면 프로젝트마다 다시 칠 일이 없습니다.
+**한 번만 넣고 끝내려면** (권장) — 도구마다 "모든 프로젝트에서 자동으로 읽는 파일"이
+있습니다. 거기 넣으면 프로젝트마다 다시 칠 일이 없습니다.
+
+| 도구 | 전역 (한 번만) | 프로젝트 |
+|---|---|---|
+| Claude Code | `~/.claude/CLAUDE.md` | `CLAUDE.md` |
+| Google Antigravity | `~/.gemini/AGENTS.md` | `AGENTS.md` |
+
+Antigravity 전역은 `GEMINI.md` 가 **아니라** `AGENTS.md` 입니다.
+`~/.gemini/GEMINI.md` 는 Gemini CLI 가 같은 경로를 하드코딩해 두어 서로 덮어씁니다
+([gemini-cli#16058](https://github.com/google-gemini/gemini-cli/issues/16058)).
+selftest 가 그 파일 이름을 아예 막습니다.
 
 ```powershell
-uv run vibe.py apply all --global            # 뭐가 들어가는지 먼저 보여줌
-uv run vibe.py apply all --global --yes      # 넣기. 이후 모든 프로젝트에 자동 적용
+uv run vibe.py where                         # 어디에 놓이는지 먼저 보기
+uv run vibe.py apply all --global            # 뭐가 들어가는지 보여줌 (안 바꿈)
+uv run vibe.py apply all --global --yes      # 넣기. 이후 두 도구 모두 자동 적용
+uv run vibe.py apply all --global --yes --only claude-code   # 한 도구만
 ```
+
+**계속 최신으로 두려면** — 사람들이 낸 방법이 늘어도 손댈 일이 없게:
+
+```powershell
+uv run vibe.py sync --yes        # 저장소를 당겨서 전역에 다시 얹음
+```
+
+이 한 줄을 스케줄러에 걸어 두면 됩니다
+(윈도우: 작업 스케줄러 / 맥: `launchd` · `cron`).
 
 **이 프로젝트에만** 넣고 싶으면 `--global` 을 빼면 됩니다.
 
@@ -55,8 +76,9 @@ uv run vibe.py apply all            # 뭐가 바뀌는지 먼저 보여줌 (아�
 uv run vibe.py apply all --yes      # 실제로 적용 (.bak 남김)
 ```
 
-되돌리려면 `CLAUDE.md` 에서 `<!-- vibe:키 -->` 로 시작하는 블록을 지우거나,
-옆에 남은 `CLAUDE.md.bak` 으로 되돌리면 됩니다.
+되돌리려면 규칙 파일에서 `<!-- vibe:키 -->` 블록을 지우거나, 옆에 남은 `.bak` 으로
+되돌리면 됩니다. `.bak` 은 **적용 전 원본**입니다 — 한 파일에 방법이 여러 개 붙어도
+한 번만 씁니다 (매 단계 덮어쓰면 중간 상태가 남아 되돌리기가 거짓말이 됩니다).
 
 기존 파일은 **절대 덮어쓰지 않습니다.** 이미 있으면 건너뛰고, 덧붙일 때는 표식을 남겨
 두 번 돌려도 안 늘어납니다. 이건 `uv run vibe.py selftest` 가 매번 실제로 확인합니다.

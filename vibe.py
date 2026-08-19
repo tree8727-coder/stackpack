@@ -8,11 +8,16 @@
     uv run vibe.py show 단언-부숴보기      방법 하나 자세히
     uv run vibe.py apply all             지금 폴더에 적용 미리보기 (아무것도 안 바꿈)
     uv run vibe.py apply all --yes       지금 폴더에 실제로 적용
-    uv run vibe.py apply all --global --yes   ~/.claude/ 에 한 번만 — 모든 프로젝트에 자동 적용
+    uv run vibe.py apply all --global --yes   전역에 한 번만 — 모든 프로젝트에 자동 적용
+    uv run vibe.py where                 어느 도구의 어느 파일에 놓이는지
+    uv run vibe.py sync --yes            최신으로 당겨서 전역에 다시 얹기 (스케줄러용)
     uv run vibe.py selftest              데이터 규율 + 안전장치 검사
 
 **아무것도 설치하지 않습니다.** 도구를 까는 건 build.py 쪽 일이고,
 여기는 파일만 놓습니다. 그래서 uv 말고는 필요한 게 없습니다.
+
+Claude Code 와 Google Antigravity 를 함께 봅니다. 도구마다 읽는 파일이 달라서
+경로는 vibe.yaml 의 surfaces 에 모아 두었습니다 — 도구가 늘면 거기만 고칩니다.
 
 기존 파일은 **절대 덮어쓰지 않습니다.**
   - create: 파일이 이미 있으면 건너뜁니다.
@@ -31,10 +36,23 @@ import yaml
 ROOT = Path(__file__).parent
 VIBE = ROOT / "vibe.yaml"
 
-# Claude Code 가 **모든 프로젝트에서 자동으로 읽는** 파일이 여기 있습니다.
-# --global 은 프로젝트 폴더 대신 여기에 놓습니다 — 한 번 넣으면 프로젝트마다
-# 다시 칠 필요가 없습니다. 그래서 위험도 큽니다: 여기 쓴 건 전부에 영향을 줍니다.
-GLOBAL = Path.home() / ".claude"
+# 도구마다 "모든 프로젝트에서 자동으로 읽는 파일"이 따로 있습니다. 경로는 vibe.yaml 의
+# surfaces 에 있고 여기서 해석만 합니다 — 경로를 두 곳에 적으면 반드시 갈라집니다.
+#
+# --global 은 그 자리에 놓습니다. 한 번 넣으면 프로젝트마다 다시 칠 필요가 없고,
+# 그래서 위험도 큽니다: 여기 쓴 건 그 도구의 모든 작업에 영향을 줍니다.
+
+
+def surface_paths(data, scope, root, only=None):
+    """(도구키, 이름, 실제 경로) 목록. scope 는 'global' 또는 'project'."""
+    out = []
+    for key, s in data["surfaces"].items():
+        if only and key != only:
+            continue
+        raw = s[scope]
+        path = Path(raw).expanduser() if raw.startswith("~") else root / raw
+        out.append((key, s["name"], path))
+    return out
 
 # 사람이 확인한 날짜가 이만큼 지나면 selftest 가 일부러 실패합니다.
 # (build.py 의 모델 가격표 90일 장치와 같은 이유 — 오래된 데이터가 조용히 사는 걸 막습니다)
@@ -64,49 +82,65 @@ def recipes_for(data, targets):
     return out
 
 
-def plan(data, targets, root):
+def plan(data, targets, root, scope="project", only=None):
     """(경로, 이전내용, 다음내용, 사유) 목록. 아무 파일도 건드리지 않습니다.
 
     한 파일에 방법 여러 개가 붙습니다. 그래서 각 단계의 "이전 내용"은 디스크가 아니라
     **앞 단계까지 반영된 내용**이어야 합니다. 디스크만 보면 마지막 단계가 앞 단계를
     통째로 덮어씁니다 (selftest 6번이 잡는 사고입니다).
     """
+    surfaces = surface_paths(data, scope, root, only)
     steps = []
     pending = {}  # path -> 앞 단계까지 반영된 내용 (None = 아직 파일 없음)
     for key, r in recipes_for(data, targets).items():
         for f in r.get("files", []):
-            path = root / f["path"]
-            if path in pending:
-                before = pending[path]
-            else:
-                before = path.read_text(encoding="utf-8") if path.exists() else None
-            body = f["body"].rstrip("\n")
-            if f["mode"] == "create":
-                if before is not None:
-                    steps.append((path, before, before, f"이미 있음 — 건너뜀 ({key})"))
-                    pending[path] = before
-                    continue
-                pending[path] = body + "\n"
-                steps.append((path, None, pending[path], f"새로 만듦 ({key})"))
-            elif f["mode"] == "append":
-                block = f"\n{marker(key)}\n{body}\n"
-                if before is not None and marker(key) in before:
-                    steps.append((path, before, before, f"이미 적용됨 — 건너뜀 ({key})"))
-                    pending[path] = before
-                    continue
-                base = before if before is not None else ""
-                pending[path] = base.rstrip("\n") + "\n" + block
-                steps.append((path, before, pending[path], f"덧붙임 ({key})"))
-            else:
-                raise AssertionError(f"{key}: 모르는 mode '{f['mode']}'")
+            assert f.get("to") == "rules", f"{key}: 모르는 to '{f.get('to')}'"
+            for _, _, path in surfaces:
+                yield_step(steps, pending, path, key, f)
     return steps
 
 
-def do_apply(data, targets, root, execute=False):
-    steps = plan(data, targets, root)
+def yield_step(steps, pending, path, key, f):
+    """한 파일에 방법 하나를 얹는 단계 하나를 계산합니다. 파일은 안 건드립니다."""
+    before = pending[path] if path in pending else (
+        path.read_text(encoding="utf-8") if path.exists() else None)
+    body = f["body"].rstrip("\n")
+
+    if f["mode"] == "create":
+        if before is not None:
+            pending[path] = before
+            steps.append((path, before, before, f"이미 있음 — 건너뜀 ({key})"))
+            return
+        pending[path] = body + "\n"
+        steps.append((path, None, pending[path], f"새로 만듦 ({key})"))
+        return
+
+    if f["mode"] == "append":
+        if before is not None and marker(key) in before:
+            pending[path] = before
+            steps.append((path, before, before, f"이미 적용됨 — 건너뜀 ({key})"))
+            return
+        base = before if before is not None else ""
+        pending[path] = base.rstrip("\n") + "\n" + f"\n{marker(key)}\n{body}\n"
+        steps.append((path, before, pending[path], f"덧붙임 ({key})"))
+        return
+
+    raise AssertionError(f"{key}: 모르는 mode '{f['mode']}'")
+
+
+def do_apply(data, targets, root, execute=False, scope="project", only=None):
+    steps = plan(data, targets, root, scope, only)
+    label = {p: f"{n}: {p}" for _, n, p in surface_paths(data, scope, root, only)}
+    # .bak 은 **한 번만** 씁니다. 한 파일에 방법 여러 개가 붙는데 단계마다 덮어쓰면
+    # 남는 건 원본이 아니라 중간 상태입니다 — 되돌리기가 거짓말이 됩니다.
+    # 처음 보는 경로의 첫 `before` 가 진짜 원본입니다.
+    original, backed_up = {}, set()
+    for path, before, _, _ in steps:
+        original.setdefault(path, before)
+
     changed, touched = 0, set()
     for path, before, after, why in steps:
-        rel = path.name if path.parent == root else str(path)
+        rel = label.get(path, str(path))
         if before == after:
             print(f"--  {rel}  {why}")
             continue
@@ -121,8 +155,9 @@ def do_apply(data, targets, root, execute=False):
             for line in diff:
                 print("    " + line.rstrip("\n"))
         else:
-            if before is not None:
-                path.with_suffix(path.suffix + ".bak").write_text(before, encoding="utf-8")
+            if path not in backed_up and original[path] is not None:
+                path.with_suffix(path.suffix + ".bak").write_text(original[path], encoding="utf-8")
+                backed_up.add(path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(after, encoding="utf-8")
 
@@ -154,6 +189,15 @@ def do_list(data):
     return 0
 
 
+def do_where(data):
+    for key, s in data["surfaces"].items():
+        print(f"\n{s['name']}  ({key})")
+        print(f"  전역     {s['global']}      ← 한 번 넣으면 모든 프로젝트에 자동")
+        print(f"  프로젝트  {s['project']}")
+    print("\n경로는 vibe.yaml 의 surfaces 에 있습니다. 도구가 늘면 거기만 고칩니다.")
+    return 0
+
+
 def do_show(data, key):
     r = data["recipes"][key]
     e = r["evidence"]
@@ -171,6 +215,31 @@ def do_show(data, key):
     for s in r.get("steps", []):
         print(f"  - {s}")
     return 0
+
+
+def do_sync(execute=False):
+    """저장소를 최신으로 당기고 전역에 다시 얹습니다.
+
+    사람들이 낸 방법이 늘어나도 손으로 다시 칠 일이 없게 하려는 명령입니다.
+    스케줄러에 걸어 두는 건 이것 하나면 됩니다.
+    """
+    import subprocess
+
+    r = subprocess.run(["git", "-C", str(ROOT), "pull", "--ff-only"],
+                       capture_output=True, text=True)
+    print((r.stdout or r.stderr).strip())
+    if r.returncode != 0:
+        print("\n당기지 못했습니다. 손으로 고쳐 둔 게 있으면 먼저 정리하세요.")
+        return 1
+
+    data = load()   # 당긴 뒤에 다시 읽습니다 — 안 그러면 옛 방법을 얹습니다
+    print()
+    for _, name, path in surface_paths(data, "global", ROOT):
+        print(f"{name}  →  {path}")
+        if execute:
+            path.parent.mkdir(parents=True, exist_ok=True)
+    print()
+    return do_apply(data, ["all"], ROOT, execute=execute, scope="global")
 
 
 def do_selftest(data):
@@ -210,23 +279,51 @@ def do_selftest(data):
         do_apply(data, ["all"], tmp, execute=True)
         made = sorted(p.name for p in tmp.iterdir())
         assert made, "적용했는데 아무 파일도 안 생겼습니다"
-        first = (tmp / "CLAUDE.md").read_text(encoding="utf-8")
+        for _, _, sp in surface_paths(data, "project", tmp):
+            assert sp.exists(), f"{sp.name} 이 안 만들어졌습니다 — 도구 하나가 빠졌습니다"
+        first = {sp: sp.read_text(encoding="utf-8")
+                 for _, _, sp in surface_paths(data, "project", tmp)}
 
         # 6. 두 번 돌려도 안 늘어난다
         do_apply(data, ["all"], tmp, execute=True)
-        assert (tmp / "CLAUDE.md").read_text(encoding="utf-8") == first, "두 번 적용하니 내용이 달라졌습니다"
+        for sp, was in first.items():
+            assert sp.read_text(encoding="utf-8") == was, f"{sp.name}: 두 번 적용하니 달라졌습니다"
+
+        # 6-2. .bak 이 "원본" 이어야 한다 — 중간 상태가 남으면 되돌리기가 거짓말이 됩니다
+        for sp in first:
+            sp.write_text("원본입니다\n", encoding="utf-8")
+            bak = sp.with_suffix(sp.suffix + ".bak")
+            bak.unlink(missing_ok=True)
+        do_apply(data, ["all"], tmp, execute=True)
+        for sp in first:
+            bak = sp.with_suffix(sp.suffix + ".bak")
+            assert bak.read_text(encoding="utf-8") == "원본입니다\n", \
+                f"{bak.name} 이 원본이 아닙니다 — 중간 상태가 덮어썼습니다"
 
         # 7. 남이 쓴 내용을 절대 안 지운다
-        (tmp / "CLAUDE.md").write_text("# 내가 쓴 거\n건드리지 마\n" + first, encoding="utf-8")
+        for sp, was in first.items():
+            sp.write_text("# 내가 쓴 거\n건드리지 마\n" + was, encoding="utf-8")
         do_apply(data, ["all"], tmp, execute=True)
-        assert "건드리지 마" in (tmp / "CLAUDE.md").read_text(encoding="utf-8"), "남의 내용이 사라졌습니다"
+        for sp in first:
+            assert "건드리지 마" in sp.read_text(encoding="utf-8"), f"{sp.name}: 남의 내용이 사라졌습니다"
 
-    # 8. --global 이 가리키는 곳이 정말 홈 밑인지 (여기를 잘못 잡으면 남의 설정을 건드립니다)
-    assert GLOBAL == Path.home() / ".claude", f"전역 경로가 이상합니다: {GLOBAL}"
-    assert ROOT not in GLOBAL.parents and GLOBAL != ROOT, "전역 경로가 저장소 안을 가리킵니다"
+    # 8. 전역 경로가 정말 홈 밑인지. 여기를 잘못 잡으면 남의 설정을 통째로 건드립니다.
+    for k, _, path in surface_paths(data, "global", ROOT):
+        assert Path.home() in path.parents, f"{k}: 전역 경로가 홈 밖입니다 — {path}"
+        assert ROOT not in path.parents, f"{k}: 전역 경로가 저장소 안을 가리킵니다 — {path}"
+
+    # 9. Gemini CLI 와 같은 파일을 쓰지 않는다 (google-gemini/gemini-cli#16058).
+    #    ~/.gemini/GEMINI.md 는 두 도구가 하드코딩해 서로 덮어씁니다. AGENTS.md 를 씁니다.
+    for k, _, path in surface_paths(data, "global", ROOT):
+        assert path.name != "GEMINI.md", f"{k}: GEMINI.md 는 Gemini CLI 와 충돌합니다"
+
+    # 10. 도구마다 각자의 파일에 들어간다 — 한 도구만 받고 끝나면 안 됩니다
+    tmp_names = {p.name for _, _, p in surface_paths(data, "project", Path("/tmp"))}
+    assert len(tmp_names) == len(data["surfaces"]), "도구 둘이 같은 파일을 가리킵니다"
 
     검증됨 = sum(1 for r in recipes.values() if r["status"] == "검증됨")
-    print(f"\n통과. 방법 {len(recipes)}개 (검증됨 {검증됨}) · 확인 {age}일 전")
+    도구 = ", ".join(s["name"] for s in data["surfaces"].values())
+    print(f"\n통과. 방법 {len(recipes)}개 (검증됨 {검증됨}) · 도구 {도구} · 확인 {age}일 전")
     return 0
 
 
@@ -234,6 +331,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="방법 목록")
+    sub.add_parser("where", help="어느 도구의 어느 파일에 놓이는지")
+    psy = sub.add_parser("sync", help="최신으로 당겨서 전역에 다시 얹기")
+    psy.add_argument("--yes", action="store_true", help="실제로 적용 (없으면 미리보기)")
     sub.add_parser("selftest", help="데이터 규율 + 안전장치 검사")
     psh = sub.add_parser("show", help="방법 하나 자세히")
     psh.add_argument("key")
@@ -242,22 +342,34 @@ def main():
     pa.add_argument("--yes", action="store_true", help="실제로 적용 (없으면 미리보기)")
     pa.add_argument("--dir", default=".", help="적용할 폴더 (기본: 지금 폴더)")
     pa.add_argument("--global", dest="glob", action="store_true",
-                    help="~/.claude/ 에 놓아 모든 프로젝트에 자동 적용 (--dir 대신)")
+                    help="도구의 전역 규칙 파일에 놓아 모든 프로젝트에 자동 적용")
+    pa.add_argument("--only", help="도구 하나만 (claude-code / antigravity)")
     a = p.parse_args()
+
+    if a.cmd == "sync":
+        return do_sync(execute=a.yes)
 
     data = load()
     try:
         if a.cmd == "list":
             return do_list(data)
+        if a.cmd == "where":
+            return do_where(data)
         if a.cmd == "show":
             return do_show(data, a.key)
         if a.cmd == "selftest":
             return do_selftest(data)
-        if a.glob:
-            GLOBAL.mkdir(parents=True, exist_ok=True)
-            print(f"전역 적용 → {GLOBAL}/  (모든 프로젝트에 자동으로 읽힙니다)\n")
-            return do_apply(data, a.targets, GLOBAL, execute=a.yes)
-        return do_apply(data, a.targets, Path(a.dir).resolve(), execute=a.yes)
+        if a.only and a.only not in data["surfaces"]:
+            raise KeyError(a.only)
+        scope = "global" if a.glob else "project"
+        root = Path(a.dir).resolve()
+        for _, name, path in surface_paths(data, scope, root, a.only):
+            print(f"{name}  →  {path}")
+            if a.yes:
+                path.parent.mkdir(parents=True, exist_ok=True)
+        print("전역입니다 — 모든 프로젝트에서 자동으로 읽힙니다.\n" if a.glob
+              else "이 폴더에만 적용됩니다.\n")
+        return do_apply(data, a.targets, root, execute=a.yes, scope=scope, only=a.only)
     except KeyError as k:
         print(f"모르는 키: {k}\n있는 것: {', '.join(data['recipes'])}")
         return 1

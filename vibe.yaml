@@ -14,6 +14,21 @@ meta:
   version: 1
   checked: 2026-08-19
 
+# 이 방법들이 놓이는 자리. 도구마다 읽는 파일이 다릅니다.
+# 방법 쪽에는 파일 이름을 적지 않습니다 — `to: rules` 라고만 쓰고, 실제 경로는 여기서 옵니다.
+# 도구가 늘면 여기만 고칩니다.
+surfaces:
+  claude-code:
+    name: Claude Code
+    global: ~/.claude/CLAUDE.md
+    project: CLAUDE.md
+  antigravity:
+    name: Google Antigravity
+    # GEMINI.md 가 아니라 AGENTS.md 입니다. ~/.gemini/GEMINI.md 는 Gemini CLI 가
+    # 같은 경로를 하드코딩해 두어 서로 덮어씁니다 (google-gemini/gemini-cli#16058).
+    global: ~/.gemini/AGENTS.md
+    project: AGENTS.md
+
 # status 값의 뜻 — 페이지와 CLI가 이 문구를 그대로 씁니다.
 statuses:
   검증됨: "이 저장소에서 직접 돌려봤습니다."
@@ -29,7 +44,7 @@ recipes:
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["#1 본인 — 라켓온"] }
     files:
-      - path: CLAUDE.md
+      - to: rules
         mode: append
         body: |
           ## 검사를 믿는 절차
@@ -45,7 +60,7 @@ recipes:
     status: 검증됨
     evidence: { users: 1, longest: "1개월", sources: ["#2 본인 — stackpack index.html"] }
     files:
-      - path: CLAUDE.md
+      - to: rules
         mode: append
         body: |
           ## 생성물
@@ -61,7 +76,7 @@ recipes:
     status: 검증됨
     evidence: { users: 1, longest: "1개월", sources: ["#3 본인 — build.py install"] }
     files:
-      - path: CLAUDE.md
+      - to: rules
         mode: append
         body: |
           ## 파괴적 명령
@@ -77,7 +92,7 @@ recipes:
     status: 검증됨
     evidence: { users: 1, longest: "1개월", sources: ["#4 본인 — sell.yaml checked"] }
     files:
-      - path: CLAUDE.md
+      - to: rules
         mode: append
         body: |
           ## 확인할 수 없는 것
@@ -93,7 +108,7 @@ recipes:
     status: 검증됨
     evidence: { users: 1, longest: "1개월", sources: ["#5 본인 — build.py selftest"] }
     files:
-      - path: CLAUDE.md
+      - to: rules
         mode: append
         body: |
           ## 문서의 숫자
@@ -108,7 +123,7 @@ recipes:
     status: 검증됨
     evidence: { users: 1, longest: "1개월", sources: ["#6 본인 — 콤보 설치명령 파생"] }
     files:
-      - path: CLAUDE.md
+      - to: rules
         mode: append
         body: |
           ## 중복
@@ -123,7 +138,7 @@ recipes:
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["#7 본인"] }
     files:
-      - path: CLAUDE.md
+      - to: rules
         mode: append
         body: |
           ## 에이전트에게 넘기기 전에
