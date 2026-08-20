@@ -29,6 +29,7 @@ only-include = ["pkg"]
 [tool.hatch.build.targets.wheel.force-include]
 "pkg/__init__.py" = "stackpack/__init__.py"
 "vibe.py" = "stackpack/vibe.py"
+"selftest.py" = "stackpack/selftest.py"
 "vibe.yaml" = "stackpack/vibe.yaml"
 "check.py" = "stackpack/check.py"
 "guard.py" = "stackpack/guard.py"
