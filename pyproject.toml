@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "stackpack"
 version = "0.1.0"
-description = "내 AI가 사고 치기 전에 막는 관문 — 남이 이미 당한 사고 23건으로 만든 오답노트"
+description = "내 AI가 사고 치기 전에 막는 관문 — 남이 이미 당한 사고 24건으로 만든 오답노트"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

@@ -1,0 +1,9 @@
+name = "stackpack-count"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# 무료 등급으로 충분합니다. KV 하나만 씁니다.
+# 배포: npx wrangler kv namespace create KV  →  아래 id 를 채우고  →  npx wrangler deploy
+[[kv_namespaces]]
+binding = "KV"
+id = "여기에_KV_id"

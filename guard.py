@@ -22,6 +22,7 @@ Claude Code 의 PreToolUse 훅으로 붙습니다. AI 가 파일을 쓰거나 �
 
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -77,11 +78,30 @@ def 판정(tool, ti):
     base = Path(name).name
 
     # E5 — .env 를 git 에 올리려 할 때
+    #
+    # 명령 전체에서 «git add» 와 «.env» 를 따로 찾으면 안 됩니다. 한 줄에 여러
+    # 명령이 붙어 있거나 문서 본문에 «.env» 라는 글자가 있으면 엉뚱하게 막습니다 —
+    # 실제로 이 저장소의 커밋이 그렇게 한 번 막혔습니다(E16 과 같은 병).
+    # 그래서 **git add 로 시작하는 토막만** 보고, 거기서 **인자 하나가 정확히**
+    # .env 인지 봅니다. 오탐이 나는 도구는 지워집니다.
     if tool == "Bash":
-        cmd = " ".join(text.split())
-        if "git add" in cmd and (".env" in cmd and not ".env.example" in cmd):
-            return (DENY, "E5", ".env 를 git 에 올리려 하고 있습니다. 커밋에 남으면 "
-                    "파일을 지워도 히스토리에 남습니다. .gitignore 에 넣으세요.")
+        import shlex
+        for 토막 in re.split(r"&&|\|\||;|\n|\|", text):
+            토막 = 토막.strip()
+            if not 토막.startswith("git "):
+                continue
+            try:
+                말 = shlex.split(토막)
+            except ValueError:
+                continue
+            if len(말) < 3 or 말[1] != "add":
+                continue
+            for 인자 in 말[2:]:
+                이름 = Path(인자).name
+                if 이름 == ".env" or (이름.startswith(".env.")
+                                     and not 이름.endswith((".example", ".sample", ".template"))):
+                    return (DENY, "E5", f"{인자} 를 git 에 올리려 하고 있습니다. 커밋에 "
+                            "남으면 파일을 지워도 히스토리에 남습니다. .gitignore 에 넣으세요.")
         return None
 
     # E8 — 키·계좌가 파일에 박히려 할 때

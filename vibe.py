@@ -532,6 +532,7 @@ def do_sync(execute=False, 강제=False):
         CACHE.write_text(raw, encoding="utf-8")
         print(f"받았습니다 ({어느판}) → {CACHE}")
 
+    통계_보내기(load())
     data = load()   # 갱신 뒤에 다시 읽습니다 — 안 그러면 옛 방법을 얹습니다
     print()
     for _, name, path in surface_paths(data, "global", ROOT):
@@ -625,6 +626,105 @@ def do_skill(data, install=True):
 
 
 REPO = "https://github.com/tree8727-coder/stackpack"
+
+# ── 집계 (「초록불 보고서」의 표본) ──────────────────────────────────────────
+# **나가는 것은 사고 번호와 횟수뿐입니다.** 코드·파일 이름·경로·대화는 안 나갑니다.
+# 무엇이 나갔는지는 `통계` 로 언제든 그대로 볼 수 있고, `통계 끄기` 한 마디로 끝납니다.
+#
+# 읽기는 이 서버가 아니라 **깃허브의 공개 집계 파일**에서 합니다. 그래서
+# 서버가 죽어도 프로그램은 그대로 돌고, 집계를 우리가 조작할 수도 없습니다.
+COUNT_URL = "https://stackpack-count.tree8727.workers.dev/v1/count"
+STAT_OFF = Path.home() / ".stackpack" / "통계_꺼짐"
+INSTALL_ID = Path.home() / ".stackpack" / "설치id"
+SENT = Path.home() / ".stackpack" / "보낸것.jsonl"
+
+
+def 설치id():
+    """이 설치를 구분하는 난수. **기계 정보에서 만들지 않습니다** —
+    기계에서 뽑으면 그건 식별자가 되고, 난수는 그냥 난수입니다."""
+    if INSTALL_ID.exists():
+        return INSTALL_ID.read_text(encoding="utf-8").strip()
+    import uuid
+    새 = str(uuid.uuid4())
+    INSTALL_ID.parent.mkdir(parents=True, exist_ok=True)
+    INSTALL_ID.write_text(새, encoding="utf-8")
+    return 새
+
+
+def 보낼것(data):
+    """마지막으로 보낸 뒤에 새로 막힌 것만. 사고 번호와 횟수뿐입니다."""
+    마지막 = ""
+    if SENT.exists():
+        줄 = [l for l in SENT.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if 줄:
+            try:
+                마지막 = json.loads(줄[-1]).get("까지", "")
+            except json.JSONDecodeError:
+                pass
+    센것 = {}
+    if BLOCK_LOG.exists():
+        for line in BLOCK_LOG.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("때", "") > 마지막:
+                센것[r["사고"]] = 센것.get(r["사고"], 0) + 1
+    return 센것
+
+
+def do_stats(onoff="상태"):
+    data = load()
+    if onoff in ("끄기", "off"):
+        STAT_OFF.parent.mkdir(parents=True, exist_ok=True)
+        STAT_OFF.write_text("꺼짐\n", encoding="utf-8")
+        print("통계를 껐습니다. 이제 아무것도 나가지 않습니다.")
+        return 0
+    if onoff in ("켜기", "on"):
+        STAT_OFF.unlink(missing_ok=True)
+        print("통계를 켰습니다.")
+        return 0
+
+    꺼짐 = STAT_OFF.exists()
+    print(f"\n통계: {'꺼짐' if 꺼짐 else '켜짐'}")
+    보낼 = 보낼것(data)
+    이름 = {i["id"]: i["name"] for i in data["incidents"].values()}
+    print("\n다음에 나갈 내용 — **이게 전부입니다.**")
+    if not 보낼:
+        print("  (보낼 게 없습니다)")
+    for 사고, n in sorted(보낼.items()):
+        print(f"  {사고}: {n}   ({이름.get(사고, '')})")
+    print(f"  설치 ID: {설치id()[:8]}…  (난수입니다. 기계 정보에서 만들지 않았습니다)")
+    print("\n안 나가는 것: 코드 · 파일 이름 · 경로 · 대화 · IP · 기계 정보")
+    print(f"집계 결과는 공개됩니다: {REPO}/blob/main/집계.json")
+    print(f"\n끄려면: {prog()} 통계 끄기")
+    return 0
+
+
+def 통계_보내기(data):
+    """sync 할 때 조용히 보냅니다. 실패해도 아무 일도 일어나지 않습니다."""
+    if STAT_OFF.exists():
+        return
+    보낼 = 보낼것(data)
+    if not 보낼:
+        return
+    import urllib.request
+    몸 = json.dumps({"install": 설치id(), "counts": 보낼}).encode()
+    요청 = urllib.request.Request(COUNT_URL, data=몸,
+                                headers={"content-type": "application/json"})
+    try:
+        urllib.request.urlopen(요청, timeout=10).read()
+    except Exception:
+        return          # 못 보내도 그만입니다. 사용자 작업을 막지 않습니다.
+    try:
+        SENT.parent.mkdir(parents=True, exist_ok=True)
+        with SENT.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"까지": datetime.now().isoformat(timespec="seconds"),
+                                "보낸것": 보낼}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def do_send(data):
@@ -1435,6 +1535,11 @@ def do_selftest(data):
                        "content": "auto_stop_machines = 'off'\nmin_machines_running = 1"}, "E13"),
             ("Bash", {"command": "git add .env"}, "E5"),
         ]
+        막아야 += [
+            ("Bash", {"command": "git add .env"}, "E5"),
+            ("Bash", {"command": "cd app && git add src/.env"}, "E5"),
+            ("Bash", {"command": "git add -A; git add .env.production"}, "E5"),
+        ]
         for tool, ti, 사고 in 막아야:
             r = g.판정(tool, ti)
             assert r is not None, f"관문이 {사고} 를 못 막았습니다: {ti}"
@@ -1446,6 +1551,12 @@ def do_selftest(data):
         assert 물어봐야 and 물어봐야[0] == "escalate", "E10 은 사람에게 물어봐야 합니다"
 
         통과해야 = [
+            # 오탐으로 실제 커밋이 막혔던 것들 — 명령 안에 «.env» 라는 글자가
+            # 무관하게 들어 있어도 막으면 안 됩니다. 오탐 나는 도구는 지워집니다.
+            ("Bash", {"command": "git add -A && git commit -m '.env 를 gitignore 에 넣었다'"}),
+            ("Bash", {"command": "echo '.env 설명' > 문서.md && git add 문서.md"}),
+            ("Bash", {"command": "git add .env.example"}),
+            ("Bash", {"command": "git status && grep -r .env ."}),
             ("Write", {"file_path": "a/README.md", "content": "# 안녕하세요\n설명입니다."}),
             ("Write", {"file_path": "a/app.py", "content": "KEY = os.environ['K']"}),
             ("Bash", {"command": "git add ."}),
@@ -1591,6 +1702,27 @@ def do_selftest(data):
     assert "/ 1.7" not in 진단소스, "토큰 추정이 두 벌입니다 — 글자_토큰 하나만 쓰세요"
     assert "글자_토큰(" in 진단소스, "진단기가 공용 추정 함수를 안 씁니다"
 
+    # 11-4j. 나가는 것이 «사고 번호와 횟수» 뿐인지. 여기가 새면 이 프로젝트의
+    #         모든 문장이 거짓말이 됩니다.
+    import inspect as _i6
+    보내기소스 = _i6.getsource(보낼것) + _i6.getsource(통계_보내기) + _i6.getsource(설치id)
+    # 「content」 를 통째로 막았더니 content-type **헤더**를 잡았습니다 — 우리 E16 과
+    # 같은 병(규칙이 엉뚱한 걸 잡음)이라, 기계 정보를 뽑는 함수 이름만 정확히 봅니다.
+    # 무엇이 실제로 나가는지는 아래 «열쇠» 검사가 못박습니다 — 그쪽이 본검사입니다.
+    for 조각 in (("Path.cw", "d()"), ("plat", "form."), ("get", "node"),
+                 ("uname", "()"), ("hostn", "ame")):
+        금지 = "".join(조각)
+        assert 금지 not in 보내기소스, f"보내기가 기계 정보를 씁니다: {금지}"
+    # 보내는 몸통에 counts·install 말고 다른 열쇠가 있으면 안 됩니다
+    본문 = re.search(r'json\.dumps\(\{([^}]*)\}\)\.encode', 보내기소스)
+    assert 본문, "보내는 내용을 확인할 수 없습니다"
+    열쇠 = set(re.findall(r'"(\w+)":', 본문.group(1)))
+    assert 열쇠 == {"install", "counts"}, f"보내는 열쇠가 늘었습니다: {열쇠}"
+    # 설치 ID 는 난수여야 합니다 — 기계에서 뽑으면 식별자가 됩니다
+    assert "uuid" in _i6.getsource(설치id), "설치 ID 가 난수가 아닙니다"
+    # 끌 수 있어야 합니다
+    assert "STAT_OFF.exists()" in _i6.getsource(통계_보내기), "통계를 끌 수 없습니다"
+
     # 11-5. 문서에 적은 사고 건수가 실제와 맞는가.
     #        P4 가 바로 이것입니다 — 손으로 맞춘 숫자는 반드시 어긋납니다.
     #        우리가 파는 규칙을 우리가 어기면 카탈로그 전체가 우스워집니다.
@@ -1654,6 +1786,7 @@ def do_selftest(data):
     "성적표": "report", "기록": "report",
     "정리": "tidy",
     "진단": "diagnose", "무게": "diagnose",
+    "통계": "stats",
     "보내기": "send", "제보": "send",
 }
 
@@ -1696,6 +1829,8 @@ def main():
     sub.add_parser("report", help="지금까지 몇 번 막았나")
     sub.add_parser("send", help="막은 기록을 이슈로 보내기 (타이핑 없이)")
     sub.add_parser("diagnose", help="매 세션 주입되는 지시량 재기")
+    pst2 = sub.add_parser("stats", help="무엇이 나가는지 보기 / 끄기")
+    pst2.add_argument("onoff", nargs="?", default="상태")
     pt = sub.add_parser("tidy", help="낡은 형식 항목 빼기")
     pt.add_argument("--yes", action="store_true")
     sub.add_parser("guard", help="(훅이 부르는 것)")
@@ -1746,6 +1881,8 @@ def main():
             return do_hook_cmd(a.onoff)
         if a.cmd == "report":
             return do_report(data)
+        if a.cmd == "stats":
+            return do_stats(a.onoff)
         if a.cmd == "diagnose":
             return do_diagnose()
         if a.cmd == "send":
