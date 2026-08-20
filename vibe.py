@@ -35,7 +35,7 @@ import re
 import json
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -341,6 +341,9 @@ def plan(data, targets, root, scope="project", only=None):
             steps.append((path, 전, 후, "더 안 쓰는 항목을 뺐습니다"))
     # 프로젝트에 넣을 때는 그 프로젝트에 해당되는 것만. 전역은 전부 (어디서 쓸지 모름)
     고른것 = None if scope == "global" else 해당되는_사고(data, root)
+    if 실험_상태().get("단계") == "끔":
+        # 실험 «끔» 주간 — 규칙만 뺍니다. 관문은 계속 켜져 있습니다.
+        return steps
     f = {"mode": "append", "body": index_block(data, 고른것)}
     for _, _, path in surfaces:
         yield_step(steps, pending, path, INDEX_KEY, f)
@@ -876,6 +879,91 @@ def do_auto_cmd(onoff):
     return 0
 
 
+# ── 실험: 규칙이 진짜 듣는가 ──────────────────────────────────────────────────
+# 규칙(글)이 AI 행동을 바꾸는지 아무도 측정한 적이 없습니다. 우리는 잴 수 있습니다.
+#
+# 규칙이 효과가 있으면 **AI 가 애초에 시도를 덜 하므로 관문이 덜 울려야** 합니다.
+# 그래서 규칙을 한 주 켜고 한 주 끄면서 관문 발동을 셉니다.
+#
+# 작업량이 주마다 다른 게 가장 큰 함정이라, 횟수가 아니라 **쓰기 100번당 막힘**
+# 으로 봅니다. 쓴 횟수는 관문이 이미 세고 있습니다(내용 없이 개수만).
+#
+# **관문은 실험 중에도 항상 켜져 있습니다.** 껐다 켜는 것은 규칙(글)뿐이라,
+# 안전이 내려가는 구간은 없습니다.
+EXP = Path.home() / ".stackpack" / "실험.json"
+WRITE_LOG = Path.home() / ".stackpack" / "쓴것.jsonl"
+한주 = 7 * 24 * 3600
+
+
+def 실험_상태():
+    if not EXP.exists():
+        return {"단계": "켬", "시작": datetime.now().isoformat(timespec="seconds"), "기간": []}
+    try:
+        return json.loads(EXP.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"단계": "켬", "시작": datetime.now().isoformat(timespec="seconds"), "기간": []}
+
+
+def 센다(로그, 부터, 까지):
+    n = 0
+    if not 로그.exists():
+        return 0
+    try:
+        for line in 로그.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            때 = r.get("때") or r.get("t")
+            if 때 and 부터 <= 때 <= 까지:
+                n += 1
+    except (OSError, json.JSONDecodeError):
+        pass
+    return n
+
+
+def 실험_넘길때가_됐나(상태):
+    try:
+        지난 = (datetime.now() - datetime.fromisoformat(상태["시작"])).total_seconds()
+    except (ValueError, KeyError):
+        return False
+    return 지난 >= 한주
+
+
+def 실험_진행(꺼짐=False):
+    """한 주가 지났으면 단계를 뒤집고 지난 기간을 기록합니다."""
+    상태 = 실험_상태()
+    if 꺼짐 or not 실험_넘길때가_됐나(상태):
+        return 상태
+    이제 = datetime.now().isoformat(timespec="seconds")
+    상태["기간"].append({
+        "단계": 상태["단계"], "부터": 상태["시작"], "까지": 이제,
+        "막힘": 센다(BLOCK_LOG, 상태["시작"], 이제),
+        "쓰기": 센다(WRITE_LOG, 상태["시작"], 이제),
+    })
+    상태["단계"] = "끔" if 상태["단계"] == "켬" else "켬"
+    상태["시작"] = 이제
+    try:
+        EXP.parent.mkdir(parents=True, exist_ok=True)
+        EXP.write_text(json.dumps(상태, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return 상태
+
+
+def 실험_결과(상태):
+    """(켬 비율, 끔 비율, 켬 주수, 끔 주수). 비율 = 쓰기 100번당 막힘."""
+    합 = {"켬": [0, 0], "끔": [0, 0]}
+    주 = {"켬": 0, "끔": 0}
+    for k in 상태.get("기간", []):
+        if k["단계"] in 합:
+            합[k["단계"]][0] += k["막힘"]
+            합[k["단계"]][1] += k["쓰기"]
+            주[k["단계"]] += 1
+    def 율(x):
+        return None if x[1] == 0 else x[0] * 100 / x[1]
+    return 율(합["켬"]), 율(합["끔"]), 주["켬"], 주["끔"]
+
+
 # ── 관문 (훅) ────────────────────────────────────────────────────────────────
 # 규칙은 부탁이고, 검사는 사후입니다. 관문만이 **막습니다.**
 # Claude Code 의 PreToolUse 훅으로 붙습니다. Antigravity 에는 같은 게 없어서
@@ -992,6 +1080,25 @@ def do_report(data):
                 print(f"  {n:>3}번   {e}")
             print("  → 여기가 «아직 이름 없는 사고» 가 숨어 있는 자리입니다.")
             print("     내용은 안 남깁니다. 무엇을 되돌렸는지가 아니라 «얼마나 자주» 만 셉니다.")
+    상태 = 실험_상태()
+    켬, 끔, 주켬, 주끔 = 실험_결과(상태)
+    print(f"\n[실험] 지금은 규칙 «{상태['단계']}» 주간입니다. (관문은 항상 켜져 있습니다)")
+    if 켬 is None or 끔 is None:
+        모자란 = "규칙 끈 주" if 끔 is None else "규칙 켠 주"
+        print(f"  아직 «{모자란}» 자료가 없습니다. 한 주씩 번갈아 모으는 중입니다.")
+    else:
+        print(f"  규칙 켠 주 ({주켬}주):  쓰기 100번당 {켬:.1f}번 막힘")
+        print(f"  규칙 끈 주 ({주끔}주):  쓰기 100번당 {끔:.1f}번 막힘")
+        차 = 끔 - 켬
+        if 주켬 < 2 or 주끔 < 2:
+            print("  → 아직 각 2주가 안 돼 판단하지 않습니다.")
+        elif 차 > 0:
+            print(f"  → 규칙이 켜진 주에 {차:.1f}만큼 덜 막혔습니다. 규칙이 일하고 있습니다.")
+        elif 차 < 0:
+            print(f"  → 규칙이 켜진 주에 오히려 {-차:.1f}만큼 더 막혔습니다. 규칙이 안 듣는 것일 수 있습니다.")
+        else:
+            print("  → 차이가 없습니다.")
+
     print(f"\n기록은 이 컴퓨터에만 있습니다 ({BLOCK_LOG.parent}). 아무 데도 안 보냅니다.")
     return 0
 
@@ -1361,6 +1468,29 @@ def do_selftest(data):
     assert ".직전" in 동기소스, "직전 판을 남기지 않습니다"
     assert 0 < 많이바뀜 < 1, f"변경 상한이 이상합니다: {많이바뀜}"
 
+    # 11-4h. 실험이 거짓말을 못 하게 합니다. 우리에게 유리한 결과가 나오도록
+    #         설계가 기울면, 그 측정은 안 하느니만 못합니다.
+    import inspect as _i4
+    실험소스 = _i4.getsource(실험_진행) + _i4.getsource(실험_결과)
+
+    # ① 작업량으로 나눠야 합니다. 횟수만 세면 바쁜 주가 이겼다고 나옵니다
+    assert "쓰기" in 실험소스, "작업량으로 정규화하지 않습니다"
+    # 쓰기 수를 일부러 다르게 둡니다. 같게 두면 «나누는지» 를 구분할 수 없습니다.
+    켬, 끔, _, _ = 실험_결과({"기간": [
+        {"단계": "켬", "막힘": 2, "쓰기": 200},   # 1.0
+        {"단계": "끔", "막힘": 9, "쓰기": 100}]})  # 9.0
+    assert abs(켬 - 1) < 1e-9 and abs(끔 - 9) < 1e-9, \
+        f"작업량으로 안 나누고 있습니다 (켬 {켬}, 끔 {끔} — 기대 1, 9)"
+
+    # ② 실험 «끔» 주간에도 **관문은 켜져 있어야** 합니다. 안전이 내려가면 안 됩니다
+    끔소스 = _i4.getsource(plan)
+    assert "관문은 계속 켜져" in 끔소스, "실험이 관문까지 끄고 있습니다"
+    assert "hook_off" not in 끔소스 and "schedule_off" not in 끔소스, \
+        "실험이 관문·자동갱신을 건드립니다"
+
+    # ③ 양쪽 자료가 2주씩 모이기 전에는 결론을 내지 않습니다
+    assert "각 2주가 안 돼" in _i4.getsource(do_report), "표본이 적을 때 결론을 냅니다"
+
     # 11-5. 문서에 적은 사고 건수가 실제와 맞는가.
     #        P4 가 바로 이것입니다 — 손으로 맞춘 숫자는 반드시 어긋납니다.
     #        우리가 파는 규칙을 우리가 어기면 카탈로그 전체가 우스워집니다.
@@ -1432,6 +1562,7 @@ def main():
 
     # 아무것도 안 붙이고 그냥 실행 → 알아서 다 합니다. 이게 기본입니다.
     if not argv:
+        실험_진행()
         data = load()
         rc = do_auto(data, execute=True)
         if (Path.home() / ".claude").exists():
