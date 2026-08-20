@@ -134,7 +134,7 @@ incidents:
     target: 검사·테스트
     when: ["test*", "*test*", "e2e*", "spec*", "conftest.py"]
     status: 검증됨
-    evidence: { users: 1, longest: "3개월", sources: ["ERRORS.md E10"] }
+    evidence: { users: 1, longest: "3개월", sources: ["#1 본인", "ERRORS.md E10"] }
 
   오탐이-멀쩡한-작업을-막음:
     id: E28
@@ -377,7 +377,7 @@ incidents:
     blind: 무엇이 생성물인지 표시가 없으면 사람도 AI 도 구분할 수 없다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — stackpack index.html"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#2 본인", "본인 — stackpack index.html"] }
 
   지운다고-말-안-함:
     id: P2
@@ -393,7 +393,7 @@ incidents:
     blind: 말은 했지만 사람이 안 읽고 넘기는 경우는 못 막는다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — build.py install"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#3 본인", "본인 — build.py install"] }
 
   항상-통과하는-검사기:
     id: P3
@@ -408,7 +408,7 @@ incidents:
     blind: 날짜만 고치고 실제 확인은 안 하는 부정행위는 못 막는다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — sell.yaml checked"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#4 본인", "본인 — sell.yaml checked"] }
 
   문서의-숫자가-틀림:
     id: P4
@@ -425,7 +425,7 @@ incidents:
     blind: 검사가 없는 문서, 그림 안의 글자, 스크린샷은 못 잡는다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — build.py selftest"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#5 본인", "본인 — build.py selftest"] }
 
   두-벌이-갈라짐:
     id: P5
@@ -441,7 +441,7 @@ incidents:
     blind: 사람 머릿속에만 있는 중복은 못 잡는다.
     target: 아무 언어
     status: 검증됨
-    evidence: { users: 1, longest: "1개월", sources: ["본인 — 콤보 설치명령"] }
+    evidence: { users: 1, longest: "1개월", sources: ["#6 본인", "본인 — 콤보 설치명령"] }
 
   내-수정과-섞임:
     id: P6
@@ -456,7 +456,7 @@ incidents:
     blind: 커밋을 안 쓰는 작업(문서·영상 편집 등)에는 그대로 적용되지 않는다.
     target: git + AI 코딩
     status: 검증됨
-    evidence: { users: 1, longest: "3개월", sources: ["본인"] }
+    evidence: { users: 1, longest: "3개월", sources: ["#7 본인", "본인"] }
 
   이어붙인-자리가-깨짐:
     id: P7
@@ -473,7 +473,7 @@ incidents:
     blind: 이음매가 아닌 곳의 문제(중간 구간 품질 저하)는 이 방법으로 안 잡힌다.
     target: 영상·문서·데이터 병합
     status: 검증됨
-    evidence: { users: 1, longest: "1주", sources: ["본인 — 0814 concat"] }
+    evidence: { users: 1, longest: "1주", sources: ["#9 본인", "본인 — 0814 concat"] }
 
   옛-스크립트의-전제가-따라옴:
     id: P8
@@ -489,4 +489,4 @@ incidents:
     blind: 두 번째까지는 매번 새로 짜는 낭비가 생긴다. 진짜 반복 작업이면 이 규칙이 틀렸다.
     target: 일회성 작업
     status: 검증됨
-    evidence: { users: 1, longest: "2주", sources: ["본인 — 0814 기존 스크립트"] }
+    evidence: { users: 1, longest: "2주", sources: ["#10 본인", "본인 — 0814 기존 스크립트"] }

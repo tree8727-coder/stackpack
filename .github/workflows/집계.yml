@@ -1,0 +1,51 @@
+# 하루 한 번 워커에서 집계를 가져와 **공개 파일로** 커밋합니다.
+#
+# 사용자는 이 파일을 읽습니다. 우리 서버에는 접속하지 않습니다.
+# 그래서 ⑴ 서버가 죽어도 프로그램이 돌고 ⑵ 집계를 우리가 조작할 수 없습니다
+# (바꾸면 커밋 기록에 남습니다).
+name: 집계 갱신
+
+on:
+  schedule: [{ cron: "17 3 * * *" }]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  갱신:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 워커에서 가져오기
+        env:
+          AGG: ${{ secrets.COUNT_AGG_URL }}
+        run: |
+          if [ -z "$AGG" ]; then
+            echo "집계 주소가 없습니다. 워커를 아직 안 띄웠으면 정상입니다."
+            exit 0
+          fi
+          # 받은 것이 JSON 인지 먼저 봅니다. 아니면 지금 파일을 그대로 둡니다 —
+          # 깨진 것을 덮어쓰면 그게 E3(빈 결과가 좋은 데이터를 덮어씀)입니다.
+          curl -fsS --max-time 20 "$AGG" -o /tmp/새집계.json || { echo "못 받음"; exit 0; }
+          python3 -c "import json,sys; d=json.load(open('/tmp/새집계.json')); sys.exit(0 if isinstance(d,dict) else 1)" \
+            || { echo "JSON 이 아님 — 그대로 둡니다"; exit 0; }
+          # 건수가 줄어드는 방향이면 멈춥니다. 사고가 조용히 사라지면 안 됩니다.
+          if [ -f 집계.json ]; then
+            python3 - <<'PY' || { echo "크게 줄어듦 — 그대로 둡니다"; exit 0; }
+          import json
+          옛 = json.load(open("집계.json")); 새 = json.load(open("/tmp/새집계.json"))
+          옛키 = {k for k in 옛 if k not in ("설치수", "요청수")}
+          새키 = {k for k in 새 if k not in ("설치수", "요청수")}
+          raise SystemExit(0 if len(새키) >= len(옛키) * 0.7 else 1)
+          PY
+          fi
+          cp /tmp/새집계.json 집계.json
+      - name: 커밋
+        run: |
+          git config user.name "집계"
+          git config user.email "noreply@github.com"
+          git add 집계.json 2>/dev/null || exit 0
+          git diff --cached --quiet && { echo "바뀐 것 없음"; exit 0; }
+          git commit -m "chore: 집계 갱신"
+          git push

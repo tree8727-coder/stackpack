@@ -675,6 +675,80 @@ def 보낼것(data):
     return 센것
 
 
+AGG_URL = "https://raw.githubusercontent.com/tree8727-coder/stackpack/main/집계.json"
+MINE = Path.home() / ".stackpack" / "내사고"
+
+
+def 집계_받기():
+    """공개 집계를 깃허브에서 읽습니다. **우리 서버에 접속하지 않습니다.**"""
+    try:
+        return json.loads(fetch(AGG_URL))
+    except Exception:
+        return None
+
+
+def do_mine(번호=None):
+    """내가 낸 사고가 남을 몇 번 구했는지 봅니다.
+
+    제보해도 아무 일이 안 일어나면 아무도 두 번째를 안 냅니다.
+    **자기 사고가 남의 컴퓨터에서 일하는 걸 보는 것** — 돈 안 드는 보상 중
+    이보다 센 게 없습니다.
+    """
+    data = load()
+    내것 = set()
+    if MINE.exists():
+        내것 = {l.strip() for l in MINE.read_text(encoding="utf-8").splitlines() if l.strip()}
+    if 번호:
+        내것.add(번호.lstrip("#"))
+        MINE.parent.mkdir(parents=True, exist_ok=True)
+        MINE.write_text("\n".join(sorted(내것)) + "\n", encoding="utf-8")
+
+    if not 내것:
+        print("\n아직 등록한 제보 번호가 없습니다.")
+        print(f"사고를 내신 뒤 이슈 번호를 알려주세요:  {prog()} 내사고 31")
+        print(f"제보하기: {REPO}/issues/new?template=사용법-제출.yml")
+        return 0
+
+    맞는것 = {}
+    for k, inc in data["incidents"].items():
+        출처 = " ".join(inc["evidence"]["sources"])
+        for n in 내것:
+            # «#1» 이 «#10» 을 잡으면 안 됩니다. 부분 문자열로 찾다 오늘만 세 번
+            # 당했습니다(E16 · E28). 숫자 끝을 못박습니다.
+            if re.search(rf"#{re.escape(n)}(?!\d)", 출처):
+                맞는것.setdefault(n, []).append(inc)
+
+    집계 = 집계_받기()
+    내기록 = 내_기록(data)
+    번호맵 = {i["id"]: k for k, i in data["incidents"].items()}
+
+    print(f"\n등록한 제보: {', '.join('#' + n for n in sorted(내것))}\n")
+    if not 맞는것:
+        print("  아직 카탈로그에 실리지 않았습니다. 실리면 여기에 나옵니다.")
+        return 0
+
+    총 = 0
+    for n, 사고들 in sorted(맞는것.items()):
+        for inc in 사고들:
+            키 = 번호맵[inc["id"]]
+            전세계 = (집계 or {}).get(inc["id"])
+            내것수 = 내기록.get(키, 0)
+            print(f"  #{n} → [{inc['id']}] {inc['name']}")
+            if 전세계 is None:
+                print(f"        전 세계: (아직 집계가 없습니다)   내 컴퓨터: {내것수}번")
+            else:
+                총 += 전세계
+                print(f"        **전 세계에서 {전세계}번 막았습니다.**   내 컴퓨터: {내것수}번")
+    if 집계 is None:
+        print("\n  집계 파일이 아직 없습니다. 사람이 쓰기 시작하면 여기에 숫자가 찹니다.")
+        print(f"  ({AGG_URL})")
+    elif 총:
+        print(f"\n  당신이 낸 사고가 남의 컴퓨터에서 **모두 {총}번** 일했습니다.")
+        if 집계.get("설치수"):
+            print(f"  (지금 {집계['설치수']}명이 쓰고 있습니다)")
+    return 0
+
+
 def do_stats(onoff="상태"):
     data = load()
     if onoff in ("끄기", "off"):
@@ -1315,6 +1389,22 @@ def do_selftest(data):
             f"{k}: 숫자도 파일 이름도 오류 문구도 없습니다 — "
             "당연한 말만 있는 사고는 싣지 않습니다")
 
+    # 1-1b2. 이슈로 들어온 사고는 **그 이슈 번호를 잃으면 안 됩니다.**
+    #         제보자가 자기 사고를 못 찾으면 두 번째 제보가 안 옵니다.
+    #         실제로 오답노트를 다시 쓰면서 #1~#10 연결이 통째로 끊겼었습니다.
+    # «#1» 이 «#10» 을 잡는지 실제로 확인합니다
+    가짜 = "#10 본인, ERRORS.md"
+    assert not re.search(r"#1(?!\d)", 가짜), "이슈 번호 찾기가 #1 로 #10 을 잡습니다"
+    assert re.search(r"#10(?!\d)", 가짜), "이슈 번호 찾기가 #10 을 못 잡습니다"
+
+    이슈있음 = [i["id"] for i in incidents.values()
+             if any("#" in s for s in i["evidence"]["sources"])]
+    assert 이슈있음, "이슈 번호가 붙은 사고가 하나도 없습니다 — 제보 추적이 끊겼습니다"
+    for k, inc in incidents.items():
+        번호 = [s for s in inc["evidence"]["sources"] if s.startswith("#")]
+        for s in 번호:
+            assert re.match(r"^#\d+\b", s), f"{k}: 이슈 번호 모양이 아닙니다 — {s}"
+
     # 1-1c. 표본이 늘고 있는지 눈에 보이게 합니다. 전부 users:1 이면 그건 한 사람의
     #        기록이지 카탈로그가 아닙니다. (막지는 않습니다 — 사실을 감추면 더 나쁩니다)
     혼자 = sum(1 for i in incidents.values() if i["evidence"]["users"] == 1)
@@ -1787,6 +1877,7 @@ def do_selftest(data):
     "정리": "tidy",
     "진단": "diagnose", "무게": "diagnose",
     "통계": "stats",
+    "내사고": "mine", "기여": "mine",
     "보내기": "send", "제보": "send",
 }
 
@@ -1831,6 +1922,8 @@ def main():
     sub.add_parser("diagnose", help="매 세션 주입되는 지시량 재기")
     pst2 = sub.add_parser("stats", help="무엇이 나가는지 보기 / 끄기")
     pst2.add_argument("onoff", nargs="?", default="상태")
+    pm = sub.add_parser("mine", help="내가 낸 사고가 남을 몇 번 구했나")
+    pm.add_argument("번호", nargs="?", help="이슈 번호 (예: 31)")
     pt = sub.add_parser("tidy", help="낡은 형식 항목 빼기")
     pt.add_argument("--yes", action="store_true")
     sub.add_parser("guard", help="(훅이 부르는 것)")
@@ -1881,6 +1974,8 @@ def main():
             return do_hook_cmd(a.onoff)
         if a.cmd == "report":
             return do_report(data)
+        if a.cmd == "mine":
+            return do_mine(a.번호)
         if a.cmd == "stats":
             return do_stats(a.onoff)
         if a.cmd == "diagnose":
