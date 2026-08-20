@@ -262,8 +262,58 @@ def check_too_big(root: Path, findings):
                     ))
 
 
+# ffmpeg 명령을 «토막» 단위로 봅니다. 명령 전체에서 글자를 찾으면 무관한 것을
+# 막습니다 — E28 에서 그렇게 우리 커밋이 막혔습니다.
+FFMPEG_RE = re.compile(r"\bffmpeg\b[^\n;&|]*")
+
+
+def _시크사고(명령: str) -> bool:
+    """-ss 가 -i 앞에만 있고 trim 으로 정확히 자르지 않는가. (E29)"""
+    if "-i" not in 명령:
+        return False
+    앞 = 명령.split("-i", 1)[0]
+    if "-ss" not in 앞:
+        return False
+    # 뒤에서 정확히 자르면 괜찮습니다
+    return "trim=" not in 명령 and "atrim=" not in 명령
+
+
+def check_ffmpeg_seek(root: Path, findings):
+    """E29 — -ss 를 -i 앞에만 써서 영상만 밀린다."""
+    for p, lines in scan_files(root):
+        for i, line in live_lines(lines):
+            for 토막 in FFMPEG_RE.findall(line):
+                if _시크사고(토막):
+                    findings.append(Finding(
+                        "E29", "주의", f"{p.relative_to(root)}:{i}",
+                        "`-ss` 가 `-i` 앞에만 있습니다",
+                        "키프레임 단위로 건너뛰어 영상만 늦게 시작합니다. 이어붙이면 "
+                        "이음매마다 쌓여 우리는 누적 96프레임(3.2초)까지 벌어졌고, "
+                        "모자이크 정책이 화면과 어긋나 참가자 얼굴이 샜습니다.",
+                        "2단계 시크를 쓰세요 — `-ss (t-4) -i SRC` 뒤에 "
+                        "`trim=start=4` / `atrim=start=4`. 그리고 `-frames:v N` 으로 프레임 수를 못박으세요.",
+                    ))
+                    break
+
+
+def check_loudnorm(root: Path, findings):
+    """E30 — loudnorm 뒤에 aresample 이 없으면 96kHz 로 나간다."""
+    for p, lines in scan_files(root):
+        for i, line in live_lines(lines):
+            for 토막 in FFMPEG_RE.findall(line):
+                if "loudnorm" in 토막 and "aresample" not in 토막:
+                    findings.append(Finding(
+                        "E30", "주의", f"{p.relative_to(root)}:{i}",
+                        "`loudnorm` 뒤에 `aresample` 이 없습니다",
+                        "loudnorm 은 내부에서 표본율을 올립니다. 그대로 두면 96kHz 로 "
+                        "나가는데 플레이어에서는 멀쩡히 들려서 배포 직전까지 모릅니다.",
+                        "`aresample=48000` 을 붙이고, 내보낸 뒤 `ffprobe` 로 표본율을 확인하세요.",
+                    ))
+                    break
+
+
 CHECKS = [
-    check_too_big,
+    check_too_big, check_ffmpeg_seek, check_loudnorm,
     check_env_tracked, check_gitignore, check_static_root,
     check_secrets, check_fly_free_tier, check_hidden_assert,
 ]

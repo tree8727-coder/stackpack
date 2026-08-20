@@ -301,6 +301,19 @@ def _되돌리기와_관문(data):
             assert r[1] == 사고, f"관문이 {사고} 를 {r[1]} 로 봤습니다"
             assert r[0] == "deny", f"{사고} 는 막아야 합니다 (지금 {r[0]})"
 
+        영상 = [
+            ("ffmpeg -ss 24.1 -i cam2.mp4 -t 12 out.mp4", "E29"),
+            ("ffmpeg -i in.wav -af loudnorm=I=-16 out.wav", "E30"),
+        ]
+        for 명령, 사고 in 영상:
+            r = g.판정("Bash", {"command": 명령})
+            assert r and r[1] == 사고, f"관문이 {사고} 를 못 봤습니다: {명령}"
+            assert r[0] == "escalate", f"{사고} 는 막지 말고 물어봐야 합니다 (오탐이 지워지게 만듭니다)"
+        for 멀쩡 in ("ffmpeg -ss 20 -i a.mp4 -filter_complex trim=start=4 -frames:v 300 o.mp4",
+                    "ffmpeg -i in.wav -af loudnorm=I=-16,aresample=48000 o.wav",
+                    "ffmpeg -i a.mp4 -c copy b.mp4"):
+            assert g.판정("Bash", {"command": 멀쩡}) is None, f"관문이 멀쩡한 걸 막았습니다: {멀쩡}"
+
         물어봐야 = g.판정("Write", {"file_path": "a/test_e2e.py",
                                   "content": 'A("x" not in pg.inner_text("#b"))'})
         assert 물어봐야 and 물어봐야[0] == "escalate", "E10 은 사람에게 물어봐야 합니다"
@@ -407,6 +420,23 @@ def _설정과_배포(data):
     if 높은것 and 색인줄:
         assert any(h in 색인줄[0] for h in 높은것), \
             f"심각도 높은 사고가 첫 줄에 없습니다: {색인줄[0][:40]}"
+
+    # 11-4c2. 도메인 사고가 남의 색인을 오염시키지 않는지. 코딩만 하는 사람에게
+    #          영상 사고가 뜨면 그건 지시 예산을 훔치는 것입니다.
+    with tempfile.TemporaryDirectory() as td6:
+        코딩만 = Path(td6)
+        (코딩만 / "app.py").write_text("x = 1\n", encoding="utf-8")
+        (코딩만 / "package.json").write_text("{}\n", encoding="utf-8")
+        고른것 = 해당되는_사고(data, 코딩만)
+        # 이름을 직접 박습니다. «영상 전용인지» 를 무늬로 추론하려다 한 번 틀렸습니다 —
+        # when 에 *.sh 가 섞여 있어서 분류가 빗나갔고, 검사가 조용히 통과했습니다.
+        영상만 = ["시크위치로-영상만-밀림", "라우드놈-뒤-리샘플-누락", "받은-파일이-깨져-있었다"]
+        for k in 영상만:
+            assert k in incidents, f"검사가 없는 사고를 가리킵니다: {k}"
+            assert k not in 고른것, (
+                f"코딩만 하는 프로젝트(app.py · package.json)에 «{k}» 가 들어갑니다 — "
+                "when 으로 걸러야 합니다")
+        assert len(고른것) < len(incidents), "감지가 아무것도 못 걸러냅니다"
 
     # 11-4c. 프로젝트 감지는 **파일 이름만** 봅니다. 내용을 읽으면 안 됩니다.
     import inspect as _ins

@@ -102,6 +102,17 @@ def 판정(tool, ti):
                                      and not 이름.endswith((".example", ".sample", ".template"))):
                     return (DENY, "E5", f"{인자} 를 git 에 올리려 하고 있습니다. 커밋에 "
                             "남으면 파일을 지워도 히스토리에 남습니다. .gitignore 에 넣으세요.")
+        # E29 · E30 — ffmpeg 명령. 막지 않고 **물어봅니다** — 의도적으로 그렇게
+        # 쓰는 경우가 있고, 오탐으로 막으면 도구가 지워집니다(E28).
+        for 토막 in c.FFMPEG_RE.findall(text):
+            if c._시크사고(토막):
+                return (ASK, "E29", "-ss 가 -i 앞에만 있습니다. 키프레임 단위로 건너뛰어 "
+                        "영상만 늦게 시작하고, 이어붙이면 이음매마다 쌓입니다. "
+                        "우리는 96프레임(3.2초)까지 벌어져 참가자 얼굴이 샜습니다. "
+                        "-ss (t-4) 뒤에 trim=start=4 로 정확히 자르세요.")
+            if "loudnorm" in 토막 and "aresample" not in 토막:
+                return (ASK, "E30", "loudnorm 뒤에 aresample 이 없습니다. 표본율이 올라간 채 "
+                        "96kHz 로 나가는데 귀로는 안 들립니다. aresample=48000 을 붙이세요.")
         return None
 
     # E8 — 키·계좌가 파일에 박히려 할 때
