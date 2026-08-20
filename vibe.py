@@ -671,6 +671,94 @@ def do_send(data):
     return 0
 
 
+CLAUDE_DIR = Path.home() / ".claude"
+
+
+def 글자_토큰(글):
+    """토큰 «추정». 정확한 값이 아니라는 걸 화면에도 적습니다.
+
+    한글은 대략 글자 1.5개, 영문·기호는 4글자가 토큰 하나쯤입니다.
+    기계로 정확히 못 재는 값에 정밀한 척하지 않습니다(P3).
+    """
+    한글 = sum(1 for c in 글 if "\uac00" <= c <= "\ud7a3")
+    나머지 = len(글) - 한글
+    return int(한글 / 1.5 + 나머지 / 4)
+
+
+def do_diagnose():
+    """매 세션 AI 에게 주입되는 «지시량» 을 잽니다.
+
+    스킬 2,810개를 파는 시장에서 **덜어내라고 말하는 도구가 없습니다.**
+    설치를 파는 쪽은 구조적으로 그 말을 할 수 없습니다 — 우리는 팔 게 없어서
+    그 말만 할 수 있습니다.
+    """
+    if not CLAUDE_DIR.exists():
+        print("~/.claude 가 없습니다. Claude Code 를 쓰지 않으시는 것 같습니다.")
+        return 0
+
+    항목 = []
+    주입될글 = []          # 토큰 추정을 두 벌로 만들지 않습니다(P5) — 글자_토큰 하나만 씁니다
+    rules = CLAUDE_DIR / "CLAUDE.md"
+    if rules.exists():
+        글 = rules.read_text(encoding="utf-8", errors="ignore")
+        주입될글.append(글)
+        항목.append(("규칙 파일", "CLAUDE.md", len(글.splitlines()), len(글)))
+
+    스킬들 = []
+    skills = CLAUDE_DIR / "skills"
+    if skills.exists():
+        for d in sorted(skills.iterdir()):
+            f = d / "SKILL.md"
+            if not f.is_dir() and f.exists():
+                글 = f.read_text(encoding="utf-8", errors="ignore")
+                # 스킬은 **설명만** 항상 떠 있고 본문은 필요할 때 불러옵니다.
+                머리 = 글.split("---")[1] if 글.startswith("---") and "---" in 글[3:] else 글[:400]
+                스킬들.append((d.name, len(글.splitlines()), len(머리), len(글)))
+                주입될글.append(머리)
+
+    플러그인 = 0
+    pj = CLAUDE_DIR / "plugins" / "installed_plugins.json"
+    if pj.exists():
+        try:
+            안 = json.loads(pj.read_text(encoding="utf-8"))
+            플러그인 = sum(len(v) if isinstance(v, (list, dict)) else 1 for v in 안.values()) \
+                if isinstance(안, dict) else len(안)
+        except (OSError, json.JSONDecodeError, AttributeError):
+            플러그인 = 0
+
+    print(f"\n{CLAUDE_DIR} 를 봤습니다. **AI 에게 주입되는 설정 파일만 봅니다** —")
+    print("여러분 코드도, 대화도, 작업 기록도 안 봅니다. 그리고 아무것도 안 보냅니다.\n")
+    for 이름, 파일, 줄, 자 in 항목:
+        print(f"  {이름:<10} {파일:<24} {줄:>5}줄  {자:>7}자  (전부 매 세션 주입)")
+    if 스킬들:
+        print(f"  스킬       {len(스킬들)}개")
+        for 이름, 줄, 머리, 전체 in sorted(스킬들, key=lambda x: -x[2])[:8]:
+            print(f"             {이름:<24} {줄:>5}줄  설명 {머리:>5}자  (본문 {전체}자는 필요할 때만)")
+        if len(스킬들) > 8:
+            print(f"             … 외 {len(스킬들) - 8}개")
+    if 플러그인:
+        print(f"  플러그인   {플러그인}개")
+
+    전부 = "".join(주입될글)
+    추정 = 글자_토큰(전부)
+    print(f"\n매 세션 항상 들어가는 양: 약 **{len(전부):,}자 · {추정:,}토큰** (추정입니다)")
+    print()
+    if 추정 > 3000:
+        print("  ! 지시가 많은 편입니다. 지시 밀도가 오르면 따르는 정확도가")
+        print("    임계점 이후 급락한다는 측정이 있습니다 (IFScale, arXiv:2507.11538).")
+    else:
+        print("  괜찮은 편입니다.")
+    print()
+    print("  줄이는 법 — **지우지 말고 옮기세요.**")
+    print("   · 규칙 파일에 긴 설명이 있으면 스킬로 옮깁니다. 스킬은 설명 몇 줄만 항상 뜨고")
+    print("     본문은 해당될 때만 불러옵니다. 우리가 307줄 → 31줄로 줄인 방법입니다.")
+    print("   · 안 쓰는 스킬은 폴더 이름 앞에 `_` 를 붙여 두면 꺼집니다.")
+    print()
+    print("  **어떤 스킬을 실제로 쓰는지는 우리가 알 수 없습니다.** 대화를 안 보기 때문입니다.")
+    print("  그래서 «안 쓰는 것» 을 대신 골라 드리지 않습니다 — 크기만 보여 드립니다.")
+    return 0
+
+
 def do_tidy(data, execute=False):
     """끝 표시가 없던 시절의 낡은 블록을 빼냅니다.
 
@@ -1491,6 +1579,18 @@ def do_selftest(data):
     # ③ 양쪽 자료가 2주씩 모이기 전에는 결론을 내지 않습니다
     assert "각 2주가 안 돼" in _i4.getsource(do_report), "표본이 적을 때 결론을 냅니다"
 
+    # 11-4i. 진단기가 «남의 것» 을 안 보는지. 우리가 볼 것은 AI 에게 주입되는
+    #         설정 파일뿐입니다. 대화 기록이나 프로젝트 코드를 보기 시작하면
+    #         「서버 없음·대화 안 봄」 이라는 우리 문장이 거짓말이 됩니다.
+    import inspect as _i5
+    진단소스 = _i5.getsource(do_diagnose)
+    for 조각 in (("trans", "cripts"), ("hist", "ory.jsonl"), ("sess", "ions")):
+        금지 = "".join(조각)
+        assert 금지 not in 진단소스, f"진단기가 대화 기록을 봅니다: {금지}"
+    # 토큰 추정은 한 곳에서만 합니다(P5)
+    assert "/ 1.7" not in 진단소스, "토큰 추정이 두 벌입니다 — 글자_토큰 하나만 쓰세요"
+    assert "글자_토큰(" in 진단소스, "진단기가 공용 추정 함수를 안 씁니다"
+
     # 11-5. 문서에 적은 사고 건수가 실제와 맞는가.
     #        P4 가 바로 이것입니다 — 손으로 맞춘 숫자는 반드시 어긋납니다.
     #        우리가 파는 규칙을 우리가 어기면 카탈로그 전체가 우스워집니다.
@@ -1553,6 +1653,7 @@ def do_selftest(data):
     "관문": "hook", "차단": "hook",
     "성적표": "report", "기록": "report",
     "정리": "tidy",
+    "진단": "diagnose", "무게": "diagnose",
     "보내기": "send", "제보": "send",
 }
 
@@ -1594,6 +1695,7 @@ def main():
     ph.add_argument("onoff", nargs="?", default="상태")
     sub.add_parser("report", help="지금까지 몇 번 막았나")
     sub.add_parser("send", help="막은 기록을 이슈로 보내기 (타이핑 없이)")
+    sub.add_parser("diagnose", help="매 세션 주입되는 지시량 재기")
     pt = sub.add_parser("tidy", help="낡은 형식 항목 빼기")
     pt.add_argument("--yes", action="store_true")
     sub.add_parser("guard", help="(훅이 부르는 것)")
@@ -1644,6 +1746,8 @@ def main():
             return do_hook_cmd(a.onoff)
         if a.cmd == "report":
             return do_report(data)
+        if a.cmd == "diagnose":
+            return do_diagnose()
         if a.cmd == "send":
             return do_send(data)
         if a.cmd == "tidy":
