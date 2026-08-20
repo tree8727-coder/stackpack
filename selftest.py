@@ -484,6 +484,27 @@ def _설정과_배포(data):
     # 끌 수 있어야 합니다
     assert "STAT_OFF.exists()" in _i6.getsource(통계_보내기), "통계를 끌 수 없습니다"
 
+    # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
+    #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
+    #        남의 컴퓨터에서 낡은 사고가 돕니다.
+    권 = vibe.PLUGIN_DIR
+    if 권.exists():
+        import yaml as _y
+        플카탈로그 = _y.safe_load((권 / "hooks" / "vibe.yaml").read_text(encoding="utf-8"))
+        assert set(플카탈로그["incidents"]) == set(incidents), \
+            "플러그인 안의 카탈로그가 저장소와 다릅니다 — 다시 만드세요: 플러그인"
+        for 파일 in ("guard.py", "check.py"):
+            assert (권 / "hooks" / 파일).read_text(encoding="utf-8") == \
+                (ROOT / 파일).read_text(encoding="utf-8"), \
+                f"플러그인 안의 {파일} 이 원본과 다릅니다"
+        훅 = json.loads((권 / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        명 = 훅["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert "CLAUDE_PLUGIN_ROOT" in 명, "플러그인 훅이 플러그인 경로를 안 씁니다"
+        assert "#" not in 명, "훅 명령에 주석이 붙었습니다 (윈도우에서 깨집니다)"
+        스킬 = (권 / "skills" / "오답노트" / "SKILL.md").read_text(encoding="utf-8")
+        for k, inc in incidents.items():
+            assert inc["name"] in 스킬, f"플러그인 스킬에 {k} 가 빠졌습니다"
+
     # 11-5. 문서에 적은 사고 건수가 실제와 맞는가.
     #        P4 가 바로 이것입니다 — 손으로 맞춘 숫자는 반드시 어긋납니다.
     #        우리가 파는 규칙을 우리가 어기면 카탈로그 전체가 우스워집니다.

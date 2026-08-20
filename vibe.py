@@ -933,6 +933,77 @@ def do_diagnose():
     return 0
 
 
+PLUGIN_DIR = ROOT / "plugin"
+
+
+def do_plugin(data):
+    """플러그인을 **만들어냅니다.** 손으로 적으면 카탈로그와 두 벌이 됩니다(P5).
+
+    마켓에서 설치를 누르면 관문(훅)과 오답노트(스킬)가 같이 들어옵니다.
+    그 뒤로는 명령이 없습니다.
+
+    **규칙 색인은 안 들어갑니다.** 플러그인은 남의 CLAUDE.md 를 못 건드리고,
+    건드려서도 안 됩니다. 대신 스킬 설명이 «언제 해당되는지» 를 들고 있고,
+    자동 차단 6건은 훅이 지시 예산 0 으로 처리합니다.
+    """
+    권 = PLUGIN_DIR
+    (권 / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+    (권 / "hooks").mkdir(exist_ok=True)
+    (권 / "skills" / "오답노트").mkdir(parents=True, exist_ok=True)
+
+    막는것 = sorted(i["id"] for i in data["incidents"].values() if i.get("caught_by"))
+    설명 = ("AI 가 사고를 치기 직전에 막습니다. 키·계좌를 코드에 적으려 할 때, "
+          ".env 를 커밋하려 할 때, 배포 설정을 건드릴 때, 검사를 새로 쓸 때, "
+          "수집 결과를 덮어쓸 때 멈춰 세웁니다. "
+          f"남이 실제로 당한 사고 {len(data['incidents'])}건 "
+          f"(그중 {len(막는것)}건은 자동 차단: {' '.join(막는것)}). "
+          "«이거 왜 이렇게 됐지» 하는 상황에서도 같은 사고가 있는지 찾습니다.")
+
+    (권 / ".claude-plugin" / "plugin.json").write_text(json.dumps({
+        "name": "stackpack",
+        "description": 설명,
+        "version": "0.1.0",
+        "author": {"name": "달나루"},
+        "homepage": REPO,
+        "license": "MIT",
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    (권 / "hooks" / "hooks.json").write_text(json.dumps({
+        "description": "스택팩 관문 — 아는 사고를 치기 직전에 막습니다",
+        "hooks": {"PreToolUse": [{
+            "matcher": "Write|Edit|Bash",
+            "hooks": [{"type": "command",
+                       "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/guard.py"',
+                       "timeout": 10}],
+        }]},
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    # 관문과 검사기와 카탈로그는 **복사**합니다. 원본은 저장소 뿌리 하나뿐입니다.
+    for 파일 in ("guard.py", "check.py"):
+        (권 / "hooks" / 파일).write_text(
+            (ROOT / 파일).read_text(encoding="utf-8"), encoding="utf-8")
+    (권 / "hooks" / "vibe.yaml").write_text(
+        source().read_text(encoding="utf-8"), encoding="utf-8")
+    (권 / "skills" / "오답노트" / "SKILL.md").write_text(skill_text(data), encoding="utf-8")
+
+    (권 / ".claude-plugin" / "marketplace.json").write_text(json.dumps({
+        "name": "stackpack",
+        "description": "AI 가 사고 치기 전에 막는 관문 — 실제로 당한 사고로 만든 오답노트",
+        "owner": {"name": "달나루"},
+        "plugins": [{"name": "stackpack", "description": 설명,
+                     "author": {"name": "달나루"}, "source": "./"}],
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    print(f"플러그인을 만들었습니다 → {권}/")
+    print(f"  사고 {len(data['incidents'])}건 · 자동 차단 {len(막는것)}건")
+    print()
+    print("쓰는 사람은 Claude Code 에서 이렇게만 하면 됩니다:")
+    print(f"  /plugin marketplace add {REPO.split('//')[1]}")
+    print("  /plugin install stackpack")
+    print("  → 관문과 오답노트가 같이 들어갑니다. 그 뒤로 명령 없습니다.")
+    return 0
+
+
 def do_tidy(data, execute=False):
     """끝 표시가 없던 시절의 낡은 블록을 빼냅니다.
 
@@ -1388,6 +1459,7 @@ def do_selftest(data):
     "정리": "tidy",
     "진단": "diagnose", "무게": "diagnose",
     "통계": "stats",
+    "플러그인": "plugin",
     "내사고": "mine", "기여": "mine",
     "보내기": "send", "제보": "send",
 }
@@ -1431,6 +1503,7 @@ def main():
     sub.add_parser("report", help="지금까지 몇 번 막았나")
     sub.add_parser("send", help="막은 기록을 이슈로 보내기 (타이핑 없이)")
     sub.add_parser("diagnose", help="매 세션 주입되는 지시량 재기")
+    sub.add_parser("plugin", help="Claude Code 플러그인 만들기")
     pst2 = sub.add_parser("stats", help="무엇이 나가는지 보기 / 끄기")
     pst2.add_argument("onoff", nargs="?", default="상태")
     pm = sub.add_parser("mine", help="내가 낸 사고가 남을 몇 번 구했나")
@@ -1489,6 +1562,8 @@ def main():
             return do_mine(a.번호)
         if a.cmd == "stats":
             return do_stats(a.onoff)
+        if a.cmd == "plugin":
+            return do_plugin(data)
         if a.cmd == "diagnose":
             return do_diagnose()
         if a.cmd == "send":

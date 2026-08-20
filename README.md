@@ -83,7 +83,19 @@ stack.yaml  ←  유일한 진실. 손으로만 편집.
 
 > **처음 오셨나요?** → [사용법.md](사용법.md) 를 보세요. 쉬운 말로만 적었습니다.
 
-### 깔기 — 한 줄
+### 깔기 — Claude Code 플러그인 (제일 쉬움)
+
+```
+/plugin marketplace add github.com/tree8727-coder/stackpack
+/plugin install stackpack
+```
+
+관문(훅)과 오답노트(스킬)가 같이 들어옵니다. **그 뒤로 명령이 없습니다.**
+플러그인은 `uv run vibe.py 플러그인` 이 `vibe.yaml` 에서 **만들어냅니다** —
+손으로 고치면 두 벌이 되고, 갈라진 채 마켓에 올라가면 남의 컴퓨터에서 낡은
+사고가 돕니다. selftest 가 그걸 막습니다.
+
+### 깔기 — 한 줄 (그 외)
 
 ```powershell
 uvx stackpack
