@@ -36,7 +36,12 @@ function 오늘() {
 
 async function 집계하기(env, 날) {
   // 흩어진 칸을 읽을 때 합칩니다. 아무것도 덮어쓰지 않습니다.
+  //
+  // 횟수와 **사람 수**를 따로 냅니다. 한 사람이 열 번 걸린 것과 열 사람이 한 번씩
+  // 걸린 것은 완전히 다른 이야기인데, 합만 보면 구분이 안 됩니다.
+  // 카탈로그의 `evidence.users` 가 이 «사람 수» 에서 자랍니다.
   const 합 = {};
+  const 사람 = {};
   let 설치수 = 0;
   let cursor;
   do {
@@ -48,11 +53,13 @@ async function 집계하기(env, 날) {
       for (const [사고, n] of Object.entries(값)) {
         if (!사고번호.test(사고)) continue;
         합[사고] = (합[사고] || 0) + n;
+        사람[사고] = (사람[사고] || 0) + 1;      // 이 설치가 이 사고를 겪었다 = 1명
       }
     }
     cursor = 목록.list_complete ? null : 목록.cursor;
   } while (cursor);
   합.설치수 = 설치수;
+  합.사람 = 사람;            // 사고마다 «몇 명이 겪었나»
   return 합;
 }
 

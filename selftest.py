@@ -695,6 +695,22 @@ def _설정과_배포(data):
         assert "후보.md" in 글wf, "후보를 다른 파일에 안 씁니다"
         assert "사람이 채울 것" in 글wf, "후보가 사람 몫을 안 남깁니다"
 
+    # 11-5m. **카탈로그를 자동으로 고치는 유일한 곳**이 근거 칸만 건드리는지.
+    #         사고 문장을 기계가 쓰기 시작하면 «지어내지 않는다» 가 무너지고,
+    #         그게 이 저장소의 유일한 자산입니다.
+    갱신기 = ROOT / "도구" / "근거갱신.py"
+    if 갱신기.exists():
+        글g = 갱신기.read_text(encoding="utf-8")
+        assert 'r"users: \\d+"' in 글g, "근거 갱신기가 users 말고 다른 것도 고칩니다"
+        assert "safe_dump" not in 글g, "YAML 을 다시 쓰면 주석이 날아갑니다"
+        assert "새것 <= 지금" in 글g, "근거를 줄이고 있습니다 — 겪은 사실은 안 사라집니다"
+        for 칸 in ("story", "symptom", "fix", "blind"):
+            assert f'"{칸}"' in 글g, f"고친 뒤 «{칸}» 이 그대로인지 확인하지 않습니다"
+        # 사용자 컴퓨터의 프로그램은 카탈로그를 **못** 씁니다
+        for 파일 in (vibe.__file__, ROOT / "guard.py"):
+            assert "VIBE.write_text" not in Path(파일).read_text(encoding="utf-8"), \
+                f"{Path(파일).name} 이 카탈로그에 씁니다"
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.
