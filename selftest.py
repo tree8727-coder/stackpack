@@ -711,6 +711,23 @@ def _설정과_배포(data):
             assert "VIBE.write_text" not in Path(파일).read_text(encoding="utf-8"), \
                 f"{Path(파일).name} 이 카탈로그에 씁니다"
 
+    # 11-5n. 워커 배포 전 관문이 살아 있는지. Git 연동은 **밀기만 하면 배포**되므로
+    #         검사를 안 거친 코드가 나갑니다. 여기서 막습니다.
+    빌드 = ROOT / "worker" / "build.sh"
+    if 빌드.exists():
+        글b = 빌드.read_text(encoding="utf-8")
+        assert "grep -o" in 글b, (
+            "grep -c 로 세고 있습니다 — 그건 **줄 수**라 한 줄에 두 번이면 통과합니다(E10)")
+        assert "set -eu" in 글b, "실패해도 계속 갑니다"
+        for 봐야 in ("무료_KV쓰기_하루", "env.KV.put", "사고번호"):
+            assert 봐야 in 글b, f"배포 관문이 «{봐야}» 를 안 봅니다"
+        # 셸 변수 이름은 영문만 (E33 과 같은 자리)
+        import re as _re2
+        for 줄 in 글b.splitlines():
+            m = _re2.match(r"^([^\s=#]+)=", 줄)
+            if m:
+                assert m.group(1).isascii(), f"셸 변수 «{m.group(1)}» 이 영문이 아닙니다"
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.

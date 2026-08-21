@@ -31,7 +31,25 @@
 숫자는 **순서에만** 쓰입니다. 무엇이 카탈로그에 들어가고 빠지는지는 영원히
 사람이 정합니다. 한 설치가 하루에 올릴 수 있는 양에도 상한이 있습니다.
 
-## 배포
+## 배포 — 자동으로 (권장, 토큰 없음)
+
+Cloudflare 대시보드에서 **Git 연동**을 붙이면 밀 때마다 자동으로 배포됩니다.
+**API 토큰을 만들지 않습니다** — PyPI 신뢰 게시자와 같은 이유입니다.
+토큰이 없으면 새어 나갈 토큰도 없습니다(E8).
+
+1. 워커 → **Settings** → **Build** → **Connect** → 깃허브에서 이 저장소 고르기
+2. **Root directory**: `worker`
+3. **Build command**: `sh build.sh`   ← **이게 중요합니다**
+4. **Deploy command**: `npx wrangler deploy`
+
+`build.sh` 가 배포 전에 검사합니다. Git 연동은 **밀기만 하면 배포**되므로,
+검사를 안 거친 코드가 나가는 것을 여기서 막습니다.
+
+    ✓ 문법 · 받는 열쇠 규칙 · 무료 한도 방어 · 덧쓰기만 한다 · 사람 수를 센다
+
+하나라도 어긋나면 **배포가 멈춥니다.** 일부러 망가뜨려 확인했습니다.
+
+## 배포 — 손으로
 
     npx wrangler kv namespace create KV      # id 를 wrangler.toml 에 적는다
-    npx wrangler deploy
+    sh build.sh && npx wrangler deploy
