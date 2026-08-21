@@ -567,6 +567,36 @@ def _설정과_배포(data):
     # 몰릴 때만 만듭니다 — 한 번 되돌린 것까지 초안이 되면 잡음이 됩니다
     assert "< 3" in 초안소스, "되돌림 한 번에도 초안을 만듭니다"
 
+    # 11-5d. 보고서가 **부풀리지 않는지.** 자기한테 유리한 숫자를 쓰기 시작하면
+    #         이 저장소가 지금까지 지킨 유일한 것이 무너집니다.
+    import inspect as _i8
+    보고소스 = _i8.getsource(vibe.do_report_build)
+    assert "제보자수" in 보고소스, "보고서가 표본 수를 데이터에서 안 셉니다"
+    # 「or」 로 묶었다가 한쪽만 있어도 통과했습니다. 둘 다 요구합니다.
+    assert "표본은" in 보고소스, "보고서가 표본을 안 밝힙니다"
+    assert "아직 모르는 것" in 보고소스, "보고서가 한계를 안 적습니다"
+    assert "세는 방법" in 보고소스, "보고서가 세는 방법을 안 밝힙니다"
+
+    # 초록불 판정은 **데이터에 있어야** 합니다. 코드가 단어로 세면 E16 입니다.
+    for 조각 in (("stor", "y']"), ("in ", "글")):
+        pass
+    assert "v.get(\"초록불\")" in 보고소스, "보고서가 초록불을 데이터가 아닌 데서 셉니다"
+    초록불수 = sum(1 for v in incidents.values() if v.get("초록불"))
+    assert 0 < 초록불수 < len(incidents), \
+        f"초록불 판정이 이상합니다: {초록불수}/{len(incidents)}"
+
+    # 만들어낸 보고서의 숫자가 실제와 맞는지 (P4 — 손으로 맞추지 않습니다)
+    if vibe.REPORT_DIR.exists():
+        판 = sorted(vibe.REPORT_DIR.glob("초록불-*.md"))
+        if 판:
+            글 = 판[-1].read_text(encoding="utf-8")
+            assert f"**{len(incidents)}건**" in 글, \
+                f"보고서의 사고 건수가 실제({len(incidents)})와 다릅니다"
+            assert f"**{초록불수}건" in 글, "보고서의 초록불 건수가 실제와 다릅니다"
+            제보자수 = max((v["evidence"]["users"] for v in incidents.values()), default=0)
+            assert f"**{제보자수}명" in 글, \
+                f"보고서가 표본을 {제보자수}명이라고 안 적었습니다 — 부풀렸을 수 있습니다"
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.
