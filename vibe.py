@@ -40,6 +40,8 @@ from pathlib import Path
 
 import yaml
 
+__version__ = "0.1.1"      # ← 버전은 여기 하나뿐입니다. pyproject 가 여기서 읽어 갑니다(P5)
+
 ROOT = Path(__file__).parent
 VIBE = ROOT / "vibe.yaml"
 
@@ -83,7 +85,7 @@ STALE_DAYS = 180
 # 우리가 누구인지 밝힙니다. 파이썬 기본 이름(Python-urllib)은 봇으로 보고
 # 막는 곳이 많습니다 — Cloudflare 가 실제로 403 을 돌려줬습니다.
 # curl 로 시험하면 200 이 나와서 **손으로 시험하면 멀쩡해 보입니다.**
-UA = "stackpack/0.1.0 (+https://github.com/tree8727-coder/stackpack)"
+UA = f"stackpack/{__version__} (+https://github.com/tree8727-coder/stackpack)"
 
 
 def _열기(요청, timeout=20):
@@ -1177,7 +1179,7 @@ def do_plugin(data):
     (권 / ".claude-plugin" / "plugin.json").write_text(json.dumps({
         "name": "stackpack",
         "description": 설명,
-        "version": "0.1.0",
+        "version": __version__,
         "author": {"name": "달나루"},
         "homepage": REPO,
         "license": "MIT",

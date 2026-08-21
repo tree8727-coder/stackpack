@@ -628,7 +628,7 @@ def _설정과_배포(data):
     #         말한다» 인데 우리 문서가 틀리면 나머지도 못 믿습니다.
     if (ROOT / "pyproject.toml").exists():
         import tomllib as _t2
-        판 = _t2.load((ROOT / "pyproject.toml").open("rb"))["project"]["version"]
+        판 = vibe.__version__      # 버전은 여기 하나뿐입니다(P5)
         for 문서 in ("README.md", "사용법.md"):
             f = ROOT / 문서
             if not f.exists():
@@ -727,6 +727,13 @@ def _설정과_배포(data):
         헤더deps = sorted(x.strip().strip('"\'') for x in header.split(","))
         assert 헤더deps == sorted(cfg["project"]["dependencies"]), \
             f"의존성이 갈라졌습니다: 헤더 {헤더deps} vs pyproject {cfg['project']['dependencies']}"
+
+        # 12-4. 버전이 **한 곳에만** 있는지. 세 곳에 적혀 있었습니다(P5).
+        assert "version" in cfg["project"].get("dynamic", []), \
+            "pyproject 에 버전이 직접 적혀 있습니다 — vibe.py 의 __version__ 하나만 씁니다"
+        소스b = Path(vibe.__file__).read_text(encoding="utf-8")
+        박힌것 = re.findall(r'"stackpack/\d+\.\d+', 소스b)
+        assert not 박힌것, f"버전이 코드에 박혀 있습니다: {박힌것}"
 
         # 12-3. 진입점이 실제로 있는 함수를 가리키는지
         ep = cfg["project"]["scripts"]["stackpack"]
