@@ -646,6 +646,30 @@ def _설정과_배포(data):
         assert 있어야 in 첫화면, f"첫 화면이 «{있어야}» 를 안 알립니다"
     assert "STAT_OFF.exists()" in 첫화면, "통계가 꺼져 있어도 보낸다고 말합니다"
 
+    # 11-5i. 주소에 한글이 있으면 파이썬이 못 보냅니다. curl 로는 되기 때문에
+    #         **손으로 시험하면 멀쩡해 보이고** 프로그램에서만 터집니다 —
+    #         우리 집계 파일 이름이 한글이라 실제로 당했습니다.
+    import inspect as _ia
+    받기소스 = _ia.getsource(vibe.fetch)
+    assert "quote" in 받기소스, "주소를 인코딩하지 않습니다 — 한글 경로에서 터집니다"
+    # 실제로 한글 주소가 인코딩되는지
+    import urllib.parse as _up
+    assert _up.quote("/집계.json") != "/집계.json", "인코딩이 안 됩니다"
+
+    # 11-5j. **인터넷 요청이 한 곳으로만 나가는지.** 두 벌이면 한쪽만 고쳐집니다 —
+    #         인증서 대비를 fetch 에만 해 뒀더니 숫자 보내는 쪽이 그대로 터졌고(P5),
+    #         그다음엔 파이썬 기본 이름 때문에 Cloudflare 가 403 을 돌려줬습니다.
+    #         **curl 로 시험하면 둘 다 200 이라 손으로는 안 보입니다.**
+    소스v = Path(vibe.__file__).read_text(encoding="utf-8")
+    직접 = 소스v.count("urlopen(")
+    assert 직접 <= 2, f"urlopen 을 {직접}곳에서 부릅니다 — _열기 하나로 모으세요"
+    문소스 = _ia.getsource(vibe._열기)
+    assert "User-Agent" in 문소스, "우리 이름을 안 밝힙니다 — 봇으로 보고 막는 곳이 있습니다"
+    assert "certifi" in 문소스, "인증서 대비가 없습니다"
+    assert "urllib.request.Request(요청)" in 문소스, "주소 문자열을 못 받습니다"
+    보내기 = _ia.getsource(vibe.통계_보내기)
+    assert "_열기(" in 보내기, "보내는 쪽이 다른 문으로 나갑니다(P5)"
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.

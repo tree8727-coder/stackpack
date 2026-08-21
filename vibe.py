@@ -80,6 +80,37 @@ STALE_DAYS = 180
 금지어 = ("최적", "베스트", "정답")
 
 
+# 우리가 누구인지 밝힙니다. 파이썬 기본 이름(Python-urllib)은 봇으로 보고
+# 막는 곳이 많습니다 — Cloudflare 가 실제로 403 을 돌려줬습니다.
+# curl 로 시험하면 200 이 나와서 **손으로 시험하면 멀쩡해 보입니다.**
+UA = "stackpack/0.1.0 (+https://github.com/tree8727-coder/stackpack)"
+
+
+def _열기(요청, timeout=20):
+    """**모든 인터넷 요청이 지나가는 한 곳.**
+
+    파이썬이 시스템 인증서를 못 찾는 설치본이 실제로 있습니다. 그 대비를
+    한 군데만 해 뒀더니, 숫자를 보내는 쪽은 그대로 터졌습니다 — 두 벌이
+    갈라진 것입니다(P5). 그래서 여기로 모았습니다.
+    **검증을 끄지는 않습니다** — 끄면 받은 것을 믿을 근거가 사라집니다.
+    """
+    import ssl
+    import urllib.request
+
+    if isinstance(요청, str):
+        요청 = urllib.request.Request(요청)
+    요청.add_header("User-Agent", UA)
+
+    try:
+        return urllib.request.urlopen(요청, timeout=timeout).read().decode("utf-8")
+    except urllib.error.URLError as e:
+        if not isinstance(getattr(e, "reason", None), ssl.SSLError):
+            raise
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        return urllib.request.urlopen(요청, timeout=timeout, context=ctx).read().decode("utf-8")
+
+
 def fetch(url):
     """https 로 받아옵니다.
 
@@ -88,17 +119,17 @@ def fetch(url):
     죽으면 안 되므로, 기본 검증이 실패하면 certifi 묶음으로 한 번 더 시도합니다.
     **검증을 끄지는 않습니다** — 끄면 받은 파일을 믿을 근거가 사라집니다.
     """
-    import ssl
-    import urllib.request
+    import urllib.parse
 
-    try:
-        return urllib.request.urlopen(url, timeout=20).read().decode("utf-8")
-    except urllib.error.URLError as e:
-        if not isinstance(getattr(e, "reason", None), ssl.SSLError):
-            raise
-        import certifi
-        ctx = ssl.create_default_context(cafile=certifi.where())
-        return urllib.request.urlopen(url, timeout=20, context=ctx).read().decode("utf-8")
+    # 주소에 한글이 있으면 파이썬이 못 보냅니다(UnicodeEncodeError). 인코딩합니다.
+    # curl 은 알아서 해 주기 때문에 **손으로 시험하면 멀쩡해 보입니다** —
+    # 프로그램으로 시험해야 드러납니다.
+    쪼갠것 = urllib.parse.urlsplit(url)
+    url = urllib.parse.urlunsplit((
+        쪼갠것.scheme, 쪼갠것.netloc,
+        urllib.parse.quote(쪼갠것.path), 쪼갠것.query, 쪼갠것.fragment))
+
+    return _열기(url)
 
 
 def source():
@@ -789,7 +820,7 @@ def 통계_보내기(data):
     요청 = urllib.request.Request(COUNT_URL, data=몸,
                                 headers={"content-type": "application/json"})
     try:
-        urllib.request.urlopen(요청, timeout=10).read()
+        _열기(요청, timeout=10)     # 보내는 쪽도 같은 문을 씁니다(P5)
     except Exception:
         return          # 못 보내도 그만입니다. 사용자 작업을 막지 않습니다.
     try:
