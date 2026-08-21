@@ -719,8 +719,11 @@ def _설정과_배포(data):
         assert "grep -o" in 글b, (
             "grep -c 로 세고 있습니다 — 그건 **줄 수**라 한 줄에 두 번이면 통과합니다(E10)")
         assert "set -eu" in 글b, "실패해도 계속 갑니다"
-        for 봐야 in ("무료_KV쓰기_하루", "env.KV.put", "사고번호"):
-            assert 봐야 in 글b, f"배포 관문이 «{봐야}» 를 안 봅니다"
+        # grep 안에서는 점이 이스케이프돼 있습니다(`env\.KV\.put`).
+        # 글자 그대로 찾다가 걸렸습니다 — 찾는 문자열을 실제 모양으로 맞춥니다.
+        for 봐야 in ("무료_KV쓰기_하루", "KV.put", "사고번호"):
+            납작 = 글b.replace("\\", "")
+            assert 봐야 in 납작, f"배포 관문이 «{봐야}» 를 안 봅니다"
         # 셸 변수 이름은 영문만 (E33 과 같은 자리)
         import re as _re2
         for 줄 in 글b.splitlines():
