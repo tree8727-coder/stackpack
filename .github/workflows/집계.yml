@@ -13,7 +13,8 @@ permissions:
   contents: write
 
 jobs:
-  갱신:
+  update:
+    name: 갱신
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

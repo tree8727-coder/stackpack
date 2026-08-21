@@ -13,7 +13,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  검사:
+  test:
+    name: 검사
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,8 +23,9 @@ jobs:
       - run: uv run vibe.py selftest
       - run: uv run check.py .
 
-  배포:
-    needs: 검사
+  publish:
+    name: 배포
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

@@ -611,6 +611,18 @@ def _설정과_배포(data):
             깨진것.append(f"{f.relative_to(ROOT)}: {str(e).splitlines()[0]}")
     assert not 깨진것, "YAML 이 깨졌습니다 — " + " · ".join(깨진것)
 
+    # 11-5f. 깃허브 워크플로의 **작업 ID 는 영문·숫자여야** 합니다.
+    #         한글로 쓰면 워크플로가 **0초 만에 조용히 실패**합니다. 로그도 안 남습니다.
+    #         이것 때문에 배포가 며칠 안 돌고 있었는데 아무도 몰랐습니다 —
+    #         «실패했는데 아무 말이 없는» 것도 초록불의 한 종류입니다.
+    import yaml as _y4
+    for wf in (ROOT / ".github" / "workflows").glob("*.yml"):
+        내용 = _y4.safe_load(wf.read_text(encoding="utf-8"))
+        for 작업 in (내용.get("jobs") or {}):
+            assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", 작업), (
+                f"{wf.name} 의 작업 ID «{작업}» 이 영문이 아닙니다 — "
+                "워크플로가 조용히 안 돕니다")
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.
