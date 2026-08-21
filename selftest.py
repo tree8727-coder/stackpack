@@ -514,6 +514,59 @@ def _설정과_배포(data):
     # 끌 수 있어야 합니다
     assert "STAT_OFF.exists()" in _i6.getsource(통계_보내기), "통계를 끌 수 없습니다"
 
+    # 11-5b. 초안 벽 — 자동으로 만든 것이 카탈로그로 **새지 않는지.**
+    #         새는 순간 «지어내지 않는다» 가 무너지고, 그게 이 저장소의 유일한 자산입니다.
+    #         상태 표시가 아니라 **다른 파일**로 막았으니, 그 파일이 어디에도 안
+    #         읽히는지를 봅니다.
+    자동표시 = "초안이_새면_여기_보임"
+    원래 = vibe.DRAFTS
+    with tempfile.TemporaryDirectory() as td7:
+        vibe.DRAFTS = Path(td7) / "초안.yaml"
+        vibe.초안_쓰기([{"한줄": 자동표시, "근거": "검사용", "status": "초안"}])
+        assert vibe.초안_읽기(), "초안을 못 읽습니다"
+
+        # ① 규칙 색인에 안 들어간다
+        assert 자동표시 not in index_block(data), "초안이 규칙 색인에 샜습니다"
+        # ② 스킬에 안 들어간다
+        assert 자동표시 not in skill_text(data), "초안이 스킬에 샜습니다"
+        # ③ 놓이는 파일에 안 들어간다
+        with tempfile.TemporaryDirectory() as td8:
+            tmp8 = Path(td8)
+            do_apply(data, ["all"], tmp8, execute=True, quiet=True)
+            for _, _, sp in surface_paths(data, "project", tmp8):
+                assert 자동표시 not in sp.read_text(encoding="utf-8"), \
+                    f"초안이 {sp.name} 에 샜습니다"
+        # ④ 플러그인에 안 들어간다
+        if vibe.PLUGIN_DIR.exists():
+            for f in vibe.PLUGIN_DIR.rglob("*"):
+                if f.is_file():
+                    try:
+                        assert 자동표시 not in f.read_text(encoding="utf-8"), \
+                            f"초안이 플러그인({f.name})에 샜습니다"
+                    except UnicodeDecodeError:
+                        pass
+    vibe.DRAFTS = 원래
+
+    # ⑤ 카탈로그 자체에 «초안» 상태가 있으면 안 됩니다 — 초안은 다른 파일에 삽니다
+    for k, inc in incidents.items():
+        assert inc["status"] != "초안", f"{k}: 초안이 카탈로그에 들어와 있습니다"
+
+    # ⑥ 어떤 코드도 카탈로그 파일(vibe.yaml)에 쓰지 않는지. 사람만 고칩니다.
+    for 파일 in (vibe.__file__, ROOT / "guard.py"):
+        소스 = Path(파일).read_text(encoding="utf-8")
+        assert "VIBE.write_text" not in 소스, f"{Path(파일).name} 이 카탈로그에 씁니다"
+
+    # 11-5c. 초안이 **문장을 지어내지 않는지.** 되돌림은 «어디» 만 알고 «무엇» 은
+    #         모릅니다. 초안이 사고 문장을 만들기 시작하면 그게 지어내는 것입니다.
+    import inspect as _i7
+    초안소스 = _i7.getsource(vibe.초안_만들기)
+    assert "사람이_채울것" in 초안소스, "초안이 사람 몫을 남기지 않습니다"
+    for 금지 in ("story", "symptom", "fix"):
+        assert f'"{금지}"' not in 초안소스, f"초안이 사고 칸({금지})을 스스로 채웁니다"
+    assert "확장자" in 초안소스 and "되돌린횟수" in 초안소스, "초안이 센 것을 안 적습니다"
+    # 몰릴 때만 만듭니다 — 한 번 되돌린 것까지 초안이 되면 잡음이 됩니다
+    assert "< 3" in 초안소스, "되돌림 한 번에도 초안을 만듭니다"
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.

@@ -935,6 +935,106 @@ def do_diagnose():
 
 PLUGIN_DIR = ROOT / "plugin"
 
+# ── 초안 벽 ──────────────────────────────────────────────────────────────────
+# 자동으로 만든 것은 **카탈로그와 다른 파일에 삽니다.**
+#
+# 상태 표시(`status: 초안`)로 막을 수도 있었지만, 표시는 실수로 바뀝니다.
+# 파일이 다르면 안 바뀝니다. 초안은 이 컴퓨터의 이 파일에만 있고,
+# 규칙 파일에도 스킬에도 플러그인에도 **절대** 들어가지 않습니다.
+#
+# 초안이 카탈로그로 가는 길은 하나뿐입니다 — **사람이 이슈로 냅니다.**
+# 그 길을 자동화하면 «지어내지 않는다» 가 무너집니다.
+DRAFTS = Path.home() / ".stackpack" / "초안.yaml"
+
+
+def 초안_읽기():
+    if not DRAFTS.exists():
+        return []
+    try:
+        d = yaml.safe_load(DRAFTS.read_text(encoding="utf-8")) or {}
+        return d.get("초안", [])
+    except (OSError, yaml.YAMLError):
+        return []
+
+
+def 초안_쓰기(목록):
+    DRAFTS.parent.mkdir(parents=True, exist_ok=True)
+    DRAFTS.write_text(
+        "# 자동으로 만든 초안입니다. **카탈로그가 아닙니다.**\n"
+        "# 여기 있는 것은 규칙 파일·스킬·플러그인 어디에도 안 들어갑니다.\n"
+        "# 사람이 읽고 이슈로 내야 카탈로그로 갑니다.\n\n"
+        + yaml.safe_dump({"초안": 목록}, allow_unicode=True, sort_keys=False),
+        encoding="utf-8")
+
+
+def 초안_만들기(data):
+    """되돌림이 한 자리에 몰리면 초안을 만듭니다.
+
+    **되돌림은 «어디» 만 알려주고 «무엇» 은 모릅니다.** 그래서 초안은 사고가
+    아니라 «여기를 봐 달라» 는 쪽지입니다. 문장을 지어내지 않고, 센 것만 적습니다.
+    """
+    if not REVERT_LOG.exists():
+        return 0
+    센것 = {}
+    try:
+        for line in REVERT_LOG.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            센것[r["확장자"]] = 센것.get(r["확장자"], 0) + 1
+    except (OSError, json.JSONDecodeError):
+        return 0
+
+    있던것 = {d.get("확장자") for d in 초안_읽기()}
+    목록 = 초안_읽기()
+    새로 = 0
+    for 확장자, n in 센것.items():
+        if n < 3 or 확장자 in 있던것:      # 세 번은 몰려야 «자리» 라고 봅니다
+            continue
+        목록.append({
+            "한줄": f"{확장자} 파일에서 AI 가 쓴 것을 {n}번 되돌렸다",
+            "확장자": 확장자,
+            "되돌린횟수": n,
+            "근거": "되돌림 기록에서 자동으로 셌습니다. 내용은 안 봤습니다.",
+            "사람이_채울것": [
+                "무슨 일이 있었나 — 무엇을 보고 «이건 아니다» 라고 판단했나",
+                "언제 그 일이 나나 — 「~하려 할 때」 로",
+                "그래서 다음부터 뭘 다르게 하나",
+            ],
+        })
+        새로 += 1
+    if 새로:
+        초안_쓰기(목록)
+    return 새로
+
+
+def do_draft(번호=None):
+    """이 컴퓨터에 쌓인 초안을 봅니다. 카탈로그와 섞이지 않습니다."""
+    목록 = 초안_읽기()
+    if not 목록:
+        print("\n초안이 없습니다.")
+        print("AI 가 쓴 것을 되돌리는 일이 쌓이면 여기에 «아직 이름 없는 사고» 후보가 생깁니다.")
+        return 0
+    if 번호 is None:
+        print(f"\n초안 {len(목록)}건 — **카탈로그가 아닙니다.** 이 컴퓨터에만 있습니다.\n")
+        for i, d in enumerate(목록, 1):
+            print(f"  {i}. {d.get('한줄', '(제목 없음)')}")
+            print(f"     {d.get('근거', '')}")
+        print(f"\n하나 보기: {prog()} 초안 1")
+        print("이슈로 내면 카탈로그로 갑니다. 자동으로는 안 갑니다.")
+        return 0
+    try:
+        d = 목록[int(번호) - 1]
+    except (ValueError, IndexError):
+        print(f"1 ~ {len(목록)} 중에서 고르세요.")
+        return 1
+    print()
+    for k, v in d.items():
+        print(f"{k}: {v}")
+    print(f"\n이 초안은 **아무 곳에도 안 들어갑니다.** 이슈로 내주세요:")
+    print(f"  {REPO}/issues/new?template=사용법-제출.yml")
+    return 0
+
 
 def do_plugin(data):
     """플러그인을 **만들어냅니다.** 손으로 적으면 카탈로그와 두 벌이 됩니다(P5).
@@ -1066,6 +1166,7 @@ def do_auto(data, execute=True):
     print()
 
     do_skill(data, install=execute)
+    새초안 = 초안_만들기(data)
     바뀜 = False
     for key in 쓰는것:
         s = data["surfaces"][key]
@@ -1085,6 +1186,10 @@ def do_auto(data, execute=True):
         print(f"(규칙 파일에는 **한 줄 색인만** 넣었습니다 — 전문은 필요할 때만 불러옵니다)")
         print()
         print(f"내 프로젝트에 이 사고가 있는지 찾아보려면:  {prog()} 검사")
+    if 새초안:
+        print()
+        print(f"그리고 «아직 이름 없는 사고» 후보 {새초안}건이 생겼습니다: {prog()} 초안")
+        print("  (자동으로 만든 쪽지입니다. 카탈로그에는 안 들어갑니다)")
     return 0
 
 
@@ -1460,6 +1565,7 @@ def do_selftest(data):
     "진단": "diagnose", "무게": "diagnose",
     "통계": "stats",
     "플러그인": "plugin",
+    "초안": "draft",
     "내사고": "mine", "기여": "mine",
     "보내기": "send", "제보": "send",
 }
@@ -1504,6 +1610,8 @@ def main():
     sub.add_parser("send", help="막은 기록을 이슈로 보내기 (타이핑 없이)")
     sub.add_parser("diagnose", help="매 세션 주입되는 지시량 재기")
     sub.add_parser("plugin", help="Claude Code 플러그인 만들기")
+    pd = sub.add_parser("draft", help="이 컴퓨터에 쌓인 초안 보기")
+    pd.add_argument("번호", nargs="?")
     pst2 = sub.add_parser("stats", help="무엇이 나가는지 보기 / 끄기")
     pst2.add_argument("onoff", nargs="?", default="상태")
     pm = sub.add_parser("mine", help="내가 낸 사고가 남을 몇 번 구했나")
@@ -1562,6 +1670,8 @@ def main():
             return do_mine(a.번호)
         if a.cmd == "stats":
             return do_stats(a.onoff)
+        if a.cmd == "draft":
+            return do_draft(a.번호)
         if a.cmd == "plugin":
             return do_plugin(data)
         if a.cmd == "diagnose":
