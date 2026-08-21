@@ -114,7 +114,7 @@ uvx stackpack
 `uv` 만 있으면 됩니다(`winget install astral-sh.uv` · 맥은 `brew install uv`).
 저장소를 받을 필요도, 파이썬을 따로 깔 필요도 없습니다.
 
-> 아직 PyPI 에 올리기 전입니다. 그전까지는 저장소를 받아 `uv run vibe.py …` 로 쓰세요.
+[PyPI 에 올라가 있습니다](https://pypi.org/project/stackpack/) — v0.1.0.
 
 **한 번만 넣고 끝내려면** (권장) — 도구마다 "모든 프로젝트에서 자동으로 읽는 파일"이
 있습니다. 거기 넣으면 프로젝트마다 다시 칠 일이 없습니다.

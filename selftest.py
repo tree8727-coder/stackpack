@@ -623,6 +623,21 @@ def _설정과_배포(data):
                 f"{wf.name} 의 작업 ID «{작업}» 이 영문이 아닙니다 — "
                 "워크플로가 조용히 안 돕니다")
 
+    # 11-5g. 문서가 **낡은 사실**을 말하지 않는지. 배포가 끝났는데 «아직 올리기
+    #         전» 이라고 적혀 있으면 그것도 거짓말입니다. 우리가 파는 것이 «사실만
+    #         말한다» 인데 우리 문서가 틀리면 나머지도 못 믿습니다.
+    if (ROOT / "pyproject.toml").exists():
+        import tomllib as _t2
+        판 = _t2.load((ROOT / "pyproject.toml").open("rb"))["project"]["version"]
+        for 문서 in ("README.md", "사용법.md"):
+            f = ROOT / 문서
+            if not f.exists():
+                continue
+            글 = f.read_text(encoding="utf-8")
+            for 낡은 in ("아직 PyPI 에 올리기 전", "아직 인터넷에 올리기 전"):
+                assert 낡은 not in 글, (
+                    f"{문서} 가 «{낡은}» 이라고 말합니다 — v{판} 은 이미 올라갔습니다")
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.
