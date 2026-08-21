@@ -684,9 +684,23 @@ def 설치id():
     return 새
 
 
+# 되돌림을 보낼 때 쓰는 표시. 사고 번호(E8)와 구분됩니다.
+# **확장자만 붙입니다** — 파일 이름도 경로도 안 붙습니다.
+되돌림표 = "R:"
+허용확장자 = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".rb",
+           ".php", ".c", ".cpp", ".cs", ".swift", ".kt", ".sh", ".sql",
+           ".html", ".css", ".md", ".json", ".yaml", ".yml", ".toml", ".txt"}
+
+
 def 보낼것(data):
-    """마지막으로 보낸 뒤에 새로 막힌 것만. 사고 번호와 횟수뿐입니다."""
-    마지막 = ""
+    """마지막으로 보낸 뒤에 새로 생긴 것. **사고 번호·확장자와 횟수뿐입니다.**
+
+    되돌림도 함께 보냅니다 — «어떤 종류의 파일에서 AI 가 쓴 것을 되돌렸나».
+    그게 **아직 이름 없는 사고**를 찾는 유일한 신호입니다. 파일 이름도, 경로도,
+    내용도, 오류 메시지도 안 보냅니다. 확장자는 **아는 목록에 있는 것만**
+    보내고 나머지는 «기타» 로 뭉갭니다 — 드문 확장자는 그 자체로 신원이 됩니다.
+    """
+    마지막 = ""      # 사고 기록과 되돌림 기록 **둘 다** 이 시점 이후만 보냅니다
     if SENT.exists():
         줄 = [l for l in SENT.read_text(encoding="utf-8").splitlines() if l.strip()]
         if 줄:
@@ -705,6 +719,23 @@ def 보낼것(data):
                 continue
             if r.get("때", "") > 마지막:
                 센것[r["사고"]] = 센것.get(r["사고"], 0) + 1
+
+    # 되돌림 — 확장자별 횟수만
+    if REVERT_LOG.exists():
+        for line in REVERT_LOG.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("t", "") <= 마지막:
+                continue
+            확 = r.get("확장자", "")
+            if 확 not in 허용확장자:
+                확 = "기타"
+            열쇠 = 되돌림표 + 확
+            센것[열쇠] = 센것.get(열쇠, 0) + 1
     return 센것
 
 
@@ -802,9 +833,12 @@ def do_stats(onoff="상태"):
     if not 보낼:
         print("  (보낼 게 없습니다)")
     for 사고, n in sorted(보낼.items()):
-        print(f"  {사고}: {n}   ({이름.get(사고, '')})")
+        설명 = (f"{사고[len(되돌림표):]} 파일에서 AI 가 쓴 걸 되돌린 횟수"
+              if 사고.startswith(되돌림표) else 이름.get(사고, ""))
+        print(f"  {사고}: {n}   ({설명})")
     print(f"  설치 ID: {설치id()[:8]}…  (난수입니다. 기계 정보에서 만들지 않았습니다)")
-    print("\n안 나가는 것: 코드 · 파일 이름 · 경로 · 대화 · IP · 기계 정보")
+    print("\n안 나가는 것: 코드 · 파일 이름 · 경로 · 대화 · 오류 메시지 · IP · 기계 정보")
+    print(f"({되돌림표} 로 시작하는 것은 «그 종류 파일에서 AI 가 쓴 걸 되돌린 횟수» 입니다)")
     print(f"집계 결과는 공개됩니다: {REPO}/blob/main/집계.json")
     print(f"\n끄려면: {prog()} 통계 끄기")
     return 0

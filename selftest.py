@@ -670,6 +670,31 @@ def _설정과_배포(data):
     보내기 = _ia.getsource(vibe.통계_보내기)
     assert "_열기(" in 보내기, "보내는 쪽이 다른 문으로 나갑니다(P5)"
 
+    # 11-5k. 보내는 열쇠가 **두 모양뿐인지.** 자유 텍스트가 섞이면 그 순간
+    #         경로·키·회사 코드가 새어 나갑니다(E8). 모양으로 못을 박습니다.
+    # **설명문을 빼고 봅니다.** 「경로도 안 보냅니다」 라는 설명에 검사가 걸렸습니다 —
+    # 오늘만 세 번째 자기참조입니다. 코드만 봅니다.
+    import ast as _ast2
+    _fn = _ast2.parse(_ia.getsource(vibe.보낼것).lstrip()).body[0]
+    if (_fn.body and isinstance(_fn.body[0], _ast2.Expr)
+            and isinstance(_fn.body[0].value, _ast2.Constant)):
+        _fn.body = _fn.body[1:]        # 설명문 제거
+    보낼것소스 = _ast2.unparse(_fn)
+    assert "허용확장자" in 보낼것소스, "확장자를 아는 목록으로 안 거릅니다"
+    assert "기타" in 보낼것소스, "드문 확장자를 안 뭉갭니다 — 그 자체로 신원이 됩니다"
+    for 나쁜 in ("경로", "file_path", "message", "stderr", "오류메시지"):
+        assert 나쁜 not in 보낼것소스, f"보내는 것에 «{나쁜}» 이 들어 있습니다"
+    # 실제로 아는 확장자만 나가는지
+    assert ".py" in vibe.허용확장자 and ".env" not in vibe.허용확장자, "허용 목록이 이상합니다"
+
+    # 11-5l. 후보 워크플로가 **카탈로그를 안 건드리는지.**
+    후보wf = ROOT / ".github" / "workflows" / "후보.yml"
+    if 후보wf.exists():
+        글wf = 후보wf.read_text(encoding="utf-8")
+        assert "vibe.yaml" not in 글wf, "후보 워크플로가 카탈로그를 건드립니다"
+        assert "후보.md" in 글wf, "후보를 다른 파일에 안 씁니다"
+        assert "사람이 채울 것" in 글wf, "후보가 사람 몫을 안 남깁니다"
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.
