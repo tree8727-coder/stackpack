@@ -1,0 +1,75 @@
+name: AI가 짜준 것 — 이건 나았다 / 나빴다
+description: 사고까지는 아닌데, 이렇게 시켰더니 결과가 달라졌다
+title: "[패턴] "
+labels: ["패턴-제보", "제보됨"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **사고 제보와 다른 종류입니다.**
+        사고는 «무슨 일이 났다», 이건 «이렇게 하니 결과가 달랐다» 입니다.
+
+        > **코드를 붙이지 마세요.** 회사 코드나 개인정보가 섞여 들어옵니다.
+        > **구조만** 적어 주세요 — «함수 하나에 다 넣었다» / «파일을 셋으로 나눴다» 처럼요.
+        > 그래도 충분히 쓸모 있습니다.
+
+  - type: input
+    id: 시킨것
+    attributes:
+      label: 무엇을 시켰나요 (한 줄)
+      placeholder: "예) 결제 실패를 재시도하는 코드를 짜달라고 했다"
+    validations:
+      required: true
+
+  - type: textarea
+    id: 처음
+    attributes:
+      label: AI가 처음 준 것 — 구조만
+      description: "**코드 말고 구조.** 예) «한 함수에 재시도·로깅·알림을 다 넣었다»"
+    validations:
+      required: true
+
+  - type: textarea
+    id: 바꾼것
+    attributes:
+      label: 어떻게 바꿨나요
+      description: "예) «재시도 횟수를 인자로 빼고 알림은 호출하는 쪽으로 옮겼다»"
+    validations:
+      required: true
+
+  - type: textarea
+    id: 왜나은가
+    attributes:
+      label: 왜 그게 나았나요
+      description: |
+        **잰 게 있으면 숫자로.** «두 번째 수정이 10분에서 1분으로 줄었다» 처럼요.
+        못 쟀으면 «못 쟀지만 이래서 낫다고 본다» 라고 적어 주세요. 그것도 괜찮습니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: 안통하는경우
+    attributes:
+      label: 이 방법이 안 통하는 경우
+      description: 없으면 "모르겠음". **이 칸이 빈 제보는 채택하지 않습니다.**
+    validations:
+      required: true
+
+  - type: input
+    id: 표기
+    attributes:
+      label: 표기
+      description: '기본은 **익명**입니다. 이름을 넣고 싶으시면 적어 주세요 — 안 적으면 이슈 번호만 남습니다.'
+      placeholder: "익명"
+
+  - type: checkboxes
+    id: 동의
+    attributes:
+      label: 확인
+      options:
+        - label: "**코드를 붙이지 않았습니다.** 구조만 적었습니다."
+          required: true
+        - label: 회사 기밀·API 키·개인정보가 들어 있지 않은지 확인했습니다.
+          required: true
+        - label: 이 내용이 MIT 라이선스로 공개 저장소에 실리는 것에 동의합니다.
+          required: true

@@ -133,6 +133,7 @@ incidents:
     caught_by: check_hidden_assert
     target: 검사·테스트
     when: ["test*", "*test*", "e2e*", "spec*", "conftest.py"]
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["#1 본인", "ERRORS.md E10"] }
 
@@ -250,6 +251,7 @@ incidents:
     caught_by: check_loudnorm
     when: ["*.mp4", "*.mov", "*.wav", "*.sh", "ffmpeg*"]
     target: 영상 편집
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "2주", sources: ["0814 편집 파이프라인 실측"] }
 
@@ -288,6 +290,7 @@ incidents:
     blind: 형식이 맞고 길이도 그럴듯한 «틀린 파일» 은 못 잡는다. 그건 들어 봐야 안다.
     when: ["*.mp3", "*.ogg", "*.wav", "*.mp4", "*.png", "*.jpg"]
     target: 미디어·데이터 수집
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "2주", sources: ["0814 편집 파이프라인 실측"] }
 
@@ -311,6 +314,7 @@ incidents:
     blind: 0건이 아니라 "절반만 들어온" 경우는 건수만 봐서는 안 잡힌다.
     target: 데이터 수집·동기화
     when: ["*.json", "*.csv", "*.db", "*.sqlite*"]
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E3"] }
 
@@ -351,6 +355,7 @@ incidents:
     blind: 저장은 됐는데 내용이 틀린 경우는 못 잡는다. 그건 읽어서 확인해야 안다.
     target: 아무 언어
     when: ["*"]
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E9"] }
 
@@ -370,6 +375,7 @@ incidents:
     blind: 서비스가 조건을 조용히 바꾸면 확인한 값도 틀리게 된다.
     target: 배포·외부 서비스
     severity: 높음
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E12"] }
 
@@ -390,6 +396,7 @@ incidents:
     blind: 같은 모양의 조기 반환이 다른 데 또 있는지는 이 규칙으로 못 찾는다.
     target: 캐시·마이그레이션
     when: ["*.db", "*.sqlite*", "migrations/*"]
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E19"] }
 
@@ -409,6 +416,7 @@ incidents:
         믿고 안 간다. 빈칸이면 전화라도 해 본다.
     blind: 모름과 없음을 애초에 구분해서 저장하지 않았다면 화면만 고쳐도 소용없다.
     target: 화면·API 응답
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E22"] }
 
@@ -427,6 +435,7 @@ incidents:
       - 못 고치겠으면 표시를 지우지 말고 "지금 안 되는 것" 목록으로 옮긴다.
     blind: 검사가 있어도 그 검사가 헛돌면 이 규칙은 지켜진 것처럼 보인다(E10 과 같은 병).
     target: 아무 언어
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E2"] }
 
@@ -444,6 +453,7 @@ incidents:
       - 이미 저장된 값은 규칙만 고쳐서는 안 지워진다. **지우는 코드를 따로 부른다.**
     blind: 사람이 안 받는 진짜 번호는 이 규칙으로 못 거른다. 걸어 봐야 안다.
     target: 데이터 정제·입력 검증
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "3개월", sources: ["racketon ERRORS.md E16"] }
 
@@ -492,6 +502,7 @@ incidents:
       - 대신 **사람이 확인한 날짜**를 데이터에 적고, 그 날짜가 오래되면 빌드를 일부러 실패시킨다.
     blind: 날짜만 고치고 실제 확인은 안 하는 부정행위는 못 막는다.
     target: 아무 언어
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "1개월", sources: ["#4 본인", "본인 — sell.yaml checked"] }
 
@@ -509,6 +520,7 @@ incidents:
       - 손으로 맞추지 않는다.
     blind: 검사가 없는 문서, 그림 안의 글자, 스크린샷은 못 잡는다.
     target: 아무 언어
+    초록불: true          # 무언가가 «괜찮다» 고 알려준 뒤에 배신했다
     status: 검증됨
     evidence: { users: 1, longest: "1개월", sources: ["#5 본인", "본인 — build.py selftest"] }
 

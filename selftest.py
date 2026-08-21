@@ -597,6 +597,20 @@ def _설정과_배포(data):
             assert f"**{제보자수}명" in 글, \
                 f"보고서가 표본을 {제보자수}명이라고 안 적었습니다 — 부풀렸을 수 있습니다"
 
+    # 11-5e. 저장소의 **모든 YAML 이 파싱되는지.** 오늘만 네 번 YAML 예약 문자에
+    #         당했습니다(백틱 · 별표 · 따옴표). 하나씩 고치면 또 납니다 —
+    #         원인을 보고 고치는 것이 E27 입니다. 여기서 한 번에 봅니다.
+    import yaml as _y3
+    깨진것 = []
+    for f in list(ROOT.rglob("*.yml")) + list(ROOT.rglob("*.yaml")):
+        if any(부분 in f.parts for 부분 in (".git", "node_modules", "__pycache__")):
+            continue
+        try:
+            _y3.safe_load(f.read_text(encoding="utf-8"))
+        except (_y3.YAMLError, UnicodeDecodeError) as e:
+            깨진것.append(f"{f.relative_to(ROOT)}: {str(e).splitlines()[0]}")
+    assert not 깨진것, "YAML 이 깨졌습니다 — " + " · ".join(깨진것)
+
     # 11-6. 플러그인이 카탈로그와 갈라지지 않는지. 플러그인은 **만들어내는 것**이라
     #        손으로 고치면 두 벌이 됩니다(P5). 그리고 갈라진 채 마켓에 올라가면
     #        남의 컴퓨터에서 낡은 사고가 돕니다.
