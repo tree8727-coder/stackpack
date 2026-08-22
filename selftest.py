@@ -738,9 +738,15 @@ def _설정과_배포(data):
         assert "set -eu" in 글b, "실패해도 계속 갑니다"
         # grep 안에서는 점이 이스케이프돼 있습니다(`env\.KV\.put`).
         # 글자 그대로 찾다가 걸렸습니다 — 찾는 문자열을 실제 모양으로 맞춥니다.
-        for 봐야 in ("무료_KV쓰기_하루", "KV.put", "사고번호"):
-            납작 = 글b.replace("\\", "")
+        납작 = 글b.replace("\\", "")
+        for 봐야 in ("무료_KV쓰기_하루", "KV.put"):
             assert 봐야 in 납작, f"배포 관문이 «{봐야}» 를 안 봅니다"
+        # 열쇠 규칙은 «있는가» 가 아니라 «거르는가» 로 봅니다(E10). 그 시험이 관문에 있어야 합니다.
+        assert "test.mjs" in 납작, "배포 관문이 열쇠 규칙을 실제로 시험하지 않습니다"
+        시험 = ROOT / "worker" / "test.mjs"
+        assert 시험.exists(), "열쇠 규칙 시험 파일이 없습니다"
+        글t = 시험.read_text(encoding="utf-8")
+        assert "버려야" in 글t and "받아야" in 글t, "시험이 한쪽만 봅니다"
         # 셸 변수 이름은 영문만 (E33 과 같은 자리)
         import re as _re2
         for 줄 in 글b.splitlines():
