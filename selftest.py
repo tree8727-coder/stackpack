@@ -685,7 +685,24 @@ def _설정과_배포(data):
     for 나쁜 in ("경로", "file_path", "message", "stderr", "오류메시지"):
         assert 나쁜 not in 보낼것소스, f"보내는 것에 «{나쁜}» 이 들어 있습니다"
     # 실제로 아는 확장자만 나가는지
-    assert ".py" in vibe.허용확장자 and ".env" not in vibe.허용확장자, "허용 목록이 이상합니다"
+    # 새 분야가 «기타» 로 뭉개지면 그 분야는 영영 안 보입니다.
+    for 분야 in (".tf", ".ipynb", ".mp4", ".srt", ".csv"):
+        assert 분야 in vibe.허용확장자, f"«{분야}» 가 목록에 없어 새 분야가 안 보입니다"
+    assert "도구표" in 보낼것소스, "막힌 명령의 도구 이름을 안 보냅니다"
+    assert "허용도구" in 보낼것소스, "도구 이름을 아는 목록으로 안 거릅니다"
+    # 도구 이름은 «막힌 것» 에서만 나옵니다 — 평소 뭘 쓰는지는 안 봅니다
+    g3 = None
+    try:
+        from . import guard as g3
+    except ImportError:
+        try:
+            import guard as g3
+        except ImportError:
+            pass
+    if g3 is not None:
+        assert g3.명령도구("cd app && git add .env") == "git", "자리 옮기는 명령을 도구로 잡습니다"
+        assert g3.명령도구("sudo docker run x") == "docker", "감싸는 명령을 못 벗깁니다"
+        assert g3.명령도구("FOO=1 terraform apply") == "terraform", "환경변수를 도구로 잡습니다"
 
     # 11-5l. 후보 워크플로가 **카탈로그를 안 건드리는지.**
     후보wf = ROOT / ".github" / "workflows" / "후보.yml"

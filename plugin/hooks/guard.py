@@ -153,14 +153,49 @@ def 판정(tool, ti):
     return None
 
 
-def 기록(사고, tool, name):
+def 명령도구(text):
+    """막힌 명령의 **도구 이름 하나.** 인자도 경로도 옵션도 안 봅니다.
+
+    «어떤 분야에서 사고가 나는가» 를 알기 위한 것이지 «이 사람이 뭘 쓰는가» 가
+    아닙니다. 그래서 **관문이 실제로 걸린 명령만** 여기 들어옵니다.
+    """
+    import shlex
+    # 자리만 옮기는 명령은 «도구» 가 아닙니다. `cd app && git add .env` 에서
+    # 첫 토막을 잡으면 «cd» 가 나와 신호가 사라집니다 — 실제로 그렇게 나왔습니다.
+    # 두 가지를 갈라야 합니다.
+    #   토막째 건너뛴다 — `cd app` 은 명령이 아니라 자리 옮기기입니다.
+    #                    단어만 건너뛰면 «app» 을 도구로 잡습니다(실제로 그랬습니다).
+    #   단어만 건너뛴다 — `sudo docker …` 에서 진짜 도구는 docker 입니다.
+    토막통째 = {"cd", "pushd", "popd", "export", "source", ".", "set", "unset"}
+    감싸는것 = {"sudo", "time", "nohup", "exec", "env", "xargs"}
+    for 토막 in re.split(r"&&|\|\||;|\n|\|", text or ""):
+        토막 = 토막.strip()
+        if not 토막:
+            continue
+        try:
+            말 = shlex.split(토막)
+        except ValueError:
+            continue
+        if Path(말[0]).name in 토막통째:
+            continue
+        for 낱말 in 말:
+            이름 = Path(낱말).name
+            if "=" in 낱말 or 이름 in 감싸는것:
+                continue                  # FOO=1 · sudo 같은 것은 건너뜁니다
+            return 이름
+    return ""
+
+
+def 기록(사고, tool, name, 도구=""):
     """무엇을 막았는지만 셉니다. **막은 내용은 안 적습니다** — 그게 바로 비밀입니다."""
     try:
         LOG.parent.mkdir(parents=True, exist_ok=True)
         with LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"때": datetime.now().isoformat(timespec="seconds"),
-                                "사고": 사고, "도구": tool,
-                                "파일": Path(name).name}, ensure_ascii=False) + "\n")
+            줄 = {"때": datetime.now().isoformat(timespec="seconds"),
+                 "사고": 사고, "도구": tool, "파일": Path(name).name}
+            if 도구:
+                줄["명령도구"] = 도구
+            f.write(json.dumps(줄, ensure_ascii=False) + "\n")
     except OSError:
         pass
 
@@ -235,7 +270,7 @@ def main():
         if 결과 is None:
             return 0
         결정, 사고, 사유 = 결과
-        기록(사고, tool, fp)
+        기록(사고, tool, fp, 명령도구(ti.get("command", "")) if tool == "Bash" else "")
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": 결정,

@@ -687,9 +687,37 @@ def 설치id():
 # 되돌림을 보낼 때 쓰는 표시. 사고 번호(E8)와 구분됩니다.
 # **확장자만 붙입니다** — 파일 이름도 경로도 안 붙습니다.
 되돌림표 = "R:"
-허용확장자 = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".rb",
-           ".php", ".c", ".cpp", ".cs", ".swift", ".kt", ".sh", ".sql",
-           ".html", ".css", ".md", ".json", ".yaml", ".yml", ".toml", ".txt"}
+도구표 = "T:"      # 막힌 «명령» 의 도구 이름 (인자·경로 없음)
+# **새 분야가 «기타» 로 뭉개지면 안 됩니다.** 목록이 좁으면 테라폼·주피터·영상
+# 작업이 들어와도 안 보입니다 — 그게 «아직 우리가 모르는 분야» 를 찾는 유일한
+# 신호인데 말입니다. 널리 쓰이는 확장자는 그 자체로 신원이 안 되므로 넣습니다.
+# 드문 것(사내 전용 확장자 등)은 여전히 «기타» 로 뭉갭니다.
+허용확장자 = {
+    # 코드
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".vue", ".svelte", ".go", ".rs",
+    ".java", ".kt", ".rb", ".php", ".c", ".cpp", ".cs", ".swift", ".dart",
+    ".scala", ".ex", ".lua", ".r", ".m", ".sol", ".proto",
+    # 설정·문서
+    ".sh", ".ps1", ".sql", ".html", ".css", ".scss", ".md", ".json",
+    ".yaml", ".yml", ".toml", ".ini", ".env", ".txt", ".tex",
+    # 인프라
+    ".tf", ".tfvars", ".dockerfile", ".nix",
+    # 데이터·노트북
+    ".ipynb", ".csv", ".parquet", ".xlsx",
+    # 미디어 (영상 편집도 우리 분야입니다)
+    ".mp4", ".mov", ".mkv", ".wav", ".mp3", ".srt", ".ass", ".png", ".jpg",
+}
+
+# 막힌 «명령» 의 도구 이름. 아는 것만 보내고 나머지는 «기타» 입니다.
+# 인자·경로·옵션은 안 보냅니다 — 이름 하나뿐입니다.
+# 이걸 보는 이유는 «어떤 분야에서 사고가 나는가» 이지 «당신이 뭘 쓰는가» 가 아닙니다.
+# 그래서 **관문이 실제로 걸린 명령만** 봅니다.
+허용도구 = {
+    "git", "npm", "npx", "yarn", "pnpm", "pip", "uv", "uvx", "poetry",
+    "docker", "kubectl", "helm", "terraform", "ansible", "fly", "vercel",
+    "wrangler", "gh", "aws", "gcloud", "az", "ffmpeg", "python", "python3",
+    "node", "go", "cargo", "make", "curl", "psql", "mysql", "redis-cli",
+}
 
 
 def 보낼것(data):
@@ -719,6 +747,23 @@ def 보낼것(data):
                 continue
             if r.get("때", "") > 마지막:
                 센것[r["사고"]] = 센것.get(r["사고"], 0) + 1
+
+    # 막힌 명령의 «도구 이름» — 새 분야를 찾는 신호입니다
+    if BLOCK_LOG.exists():
+        for line in BLOCK_LOG.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("때", "") <= 마지막 or r.get("도구") != "Bash":
+                continue
+            이름 = r.get("명령도구") or "기타"
+            if 이름 not in 허용도구:
+                이름 = "기타"
+            열쇠 = 도구표 + 이름
+            센것[열쇠] = 센것.get(열쇠, 0) + 1
 
     # 되돌림 — 확장자별 횟수만
     if REVERT_LOG.exists():
@@ -833,8 +878,12 @@ def do_stats(onoff="상태"):
     if not 보낼:
         print("  (보낼 게 없습니다)")
     for 사고, n in sorted(보낼.items()):
-        설명 = (f"{사고[len(되돌림표):]} 파일에서 AI 가 쓴 걸 되돌린 횟수"
-              if 사고.startswith(되돌림표) else 이름.get(사고, ""))
+        if 사고.startswith(되돌림표):
+            설명 = f"{사고[len(되돌림표):]} 파일에서 AI 가 쓴 걸 되돌린 횟수"
+        elif 사고.startswith(도구표):
+            설명 = f"{사고[len(도구표):]} 명령이 막힌 횟수 (인자·경로 없음)"
+        else:
+            설명 = 이름.get(사고, "")
         print(f"  {사고}: {n}   ({설명})")
     print(f"  설치 ID: {설치id()[:8]}…  (난수입니다. 기계 정보에서 만들지 않았습니다)")
     print("\n안 나가는 것: 코드 · 파일 이름 · 경로 · 대화 · 오류 메시지 · IP · 기계 정보")
